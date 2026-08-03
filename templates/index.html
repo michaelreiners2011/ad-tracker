@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Ad Tracker v0.20</title>
+  <title>Ad Tracker v0.21</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -251,7 +251,7 @@
 <div id="setup-screen">
   <div class="app-header">
     <h1>Ad Tracker</h1>
-    <span class="version-badge">v0.20</span>
+    <span class="version-badge">v0.21</span>
   </div>
 
   <div id="recovery-banner" class="recovery-banner hidden">
@@ -275,21 +275,28 @@
     </div>
   </div>
 
-  <!-- Settings -->
+  <!-- Event Information -->
   <div class="card">
-    <div class="card-title">Settings</div>
+    <div class="card-title">Event Information</div>
     <div class="form-row">
       <div class="form-group">
         <label>Event Name (optional)</label>
         <input type="text" id="inp-event-name" placeholder="e.g. NCAA Regionals" style="width:200px;" />
       </div>
       <div class="form-group">
-        <label>Ad Goal — Cloud + Local (min/hr)</label>
-        <input type="number" id="inp-goal" value="7.0" min="0" max="60" step="0.1" style="width:100px;" />
-      </div>
-      <div class="form-group">
         <label>Event Day # (optional)</label>
         <input type="text" id="inp-event-day" placeholder="e.g. 2" style="width:100px;" />
+      </div>
+    </div>
+  </div>
+
+  <!-- Fullscreen Ads -->
+  <div class="card">
+    <div class="card-title">Fullscreen Ads</div>
+    <div class="form-row">
+      <div class="form-group">
+        <label>Fullscreen Ad Goal — Cloud + Direct Sold (min/hr)</label>
+        <input type="number" id="inp-goal" value="7.0" min="0" max="60" step="0.1" style="width:100px;" />
       </div>
     </div>
   </div>
@@ -312,14 +319,14 @@
     </div>
   </div>
 
-  <!-- Local Ad Library -->
+  <!-- Direct Sold Ad Library -->
   <div class="card">
-    <div class="card-title">Local Ad Library</div>
+    <div class="card-title">Direct Sold Ad Library</div>
     <p style="font-size:0.83rem;color:var(--text-muted);margin-bottom:14px;">
-      Pre-load your local spots here. They'll appear as buttons on the tracker alongside cloud ads.
+      Pre-load your direct sold spots here. They'll appear as buttons on the tracker alongside cloud ads.
       The library saves in your JSON export for multi-day events.
     </p>
-    <div id="local-lib-list"><div class="lib-empty">No local ads added yet.</div></div>
+    <div id="local-lib-list"><div class="lib-empty">No direct sold ads added yet.</div></div>
     <div class="form-row" style="align-items:flex-end;">
       <div class="form-group">
         <label>Spot Name</label>
@@ -337,7 +344,7 @@
   <div class="card">
     <div class="card-title">Load Previous Day</div>
     <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:12px;">
-      Upload a JSON export from a previous day to carry over cumulative totals and local ad library.
+      Upload a JSON export from a previous day to carry over cumulative totals and direct sold ad library.
     </p>
     <input type="file" id="carryover-file" accept=".json" style="display:none;" onchange="handleCarryoverFile(event)" />
     <button class="btn btn-secondary" onclick="document.getElementById('carryover-file').click()">
@@ -377,7 +384,7 @@
   <div id="rate-display" class="rate-display red">
     <div>
       <div class="rate-value" id="rate-value">0.00</div>
-      <div class="rate-label-text" id="rate-label-text">Cloud+Local Ad min/Ehr (cumulative)</div>
+      <div class="rate-label-text" id="rate-label-text">Fullscreen Ad min/Ehr (cumulative)</div>
     </div>
     <div class="rate-goal">Goal<br><strong id="rate-goal-val">7.00</strong></div>
   </div>
@@ -408,7 +415,7 @@
       <div class="metric-sub" id="met-elapsed-sub"></div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">Main Ad Min</div>
+      <div class="metric-label">Fullscreen Ad Min</div>
       <div class="metric-value" id="met-admin">0.00</div>
       <div class="metric-sub" id="met-admin-sub"></div>
     </div>
@@ -418,7 +425,7 @@
       <div class="metric-sub" id="met-cloud-sub">min today</div>
     </div>
     <div class="metric-card local-card">
-      <div class="metric-label" style="color:var(--local);">📡 Local</div>
+      <div class="metric-label" style="color:var(--local);">📡 Direct Sold</div>
       <div class="metric-value" id="met-local">0.00</div>
       <div class="metric-sub" id="met-local-sub">min today</div>
     </div>
@@ -460,7 +467,7 @@
     <div id="pace-rows"></div>
   </div>
 
-  <!-- Cumulative toggle -->
+  <!-- Cumulative / Overall toggles -->
   <div class="card" style="padding:14px 18px;">
     <label class="toggle-row">
       <span class="toggle">
@@ -469,14 +476,21 @@
       </span>
       Show <strong style="color:var(--text);margin:0 4px;">cumulative</strong> rate (all event days)
     </label>
+    <label class="toggle-row" style="margin-top:10px;">
+      <span class="toggle">
+        <input type="checkbox" id="toggle-show-overall" checked onchange="updateDisplay()" />
+        <span class="slider"></span>
+      </span>
+      Show <strong style="color:var(--text);margin:0 4px;">Overall</strong> Ad min/Ehr bar
+    </label>
   </div>
 
-  <!-- Tabs: Tracker | Local Ads -->
+  <!-- Tabs: Cloud | Side-by-Side | Direct Sold | Log -->
   <div class="card" style="padding:0 22px;">
     <div class="tab-bar">
       <button class="tab-btn active" id="tab-tracker-btn" onclick="switchTab('tracker')">☁ Cloud Ads</button>
       <button class="tab-btn sxs-tab hidden" id="tab-sxs-btn" onclick="switchTab('sxs')">🔀 Side-by-Side</button>
-      <button class="tab-btn local-tab" id="tab-local-btn" onclick="switchTab('local')">📡 Local Ads</button>
+      <button class="tab-btn local-tab" id="tab-local-btn" onclick="switchTab('local')">📡 Direct Sold Ads</button>
       <button class="tab-btn" id="tab-log-btn" onclick="switchTab('log')">📋 Log</button>
     </div>
 
@@ -496,12 +510,12 @@
       </div>
     </div>
 
-    <!-- Local Ads Tab -->
+    <!-- Direct Sold Ads Tab -->
     <div class="tab-panel" id="tab-local">
       <div class="ad-section">
-        <span class="section-label local">📡 Local Ads</span>
+        <span class="section-label local">📡 Direct Sold Ads</span>
         <div class="ad-grid" id="local-ad-btn-grid">
-          <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No local ads in library. Add them below.</div>
+          <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No direct sold ads in library. Add them below.</div>
         </div>
       </div>
       <hr style="border-color:var(--border);margin:16px 0;" />
@@ -1071,13 +1085,19 @@ function updateDisplay() {
   // Main rate bar
   document.getElementById('rate-display').className = 'rate-display ' + colorFor(mainRate, state.goal);
   document.getElementById('rate-value').textContent = mainRate.toFixed(2);
-  document.getElementById('rate-label-text').textContent = showCum ? 'Cloud+Local Ad min/Ehr (cumulative)' : 'Cloud+Local Ad min/Ehr (today)';
+  document.getElementById('rate-label-text').textContent = showCum ? 'Fullscreen Ad min/Ehr (cumulative)' : 'Fullscreen Ad min/Ehr (today)';
 
   // Overall rate bar
-  document.getElementById('overall-rate-display').className = 'rate-display compact ' + colorFor(overallRate, overallGoal);
-  document.getElementById('overall-rate-value').textContent = overallRate.toFixed(2);
-  document.getElementById('overall-rate-label-text').textContent = showCum ? 'Overall Ad min/Ehr (cumulative)' : 'Overall Ad min/Ehr (today)';
-  document.getElementById('overall-rate-goal-val').textContent = overallGoal.toFixed(2);
+  const showOverall = document.getElementById('toggle-show-overall').checked;
+  const overallBar = document.getElementById('overall-rate-display');
+  if (showOverall) {
+    overallBar.className = 'rate-display compact ' + colorFor(overallRate, overallGoal);
+    document.getElementById('overall-rate-value').textContent = overallRate.toFixed(2);
+    document.getElementById('overall-rate-label-text').textContent = showCum ? 'Overall Ad min/Ehr (cumulative)' : 'Overall Ad min/Ehr (today)';
+    document.getElementById('overall-rate-goal-val').textContent = overallGoal.toFixed(2);
+  } else {
+    overallBar.className = 'rate-display compact hidden';
+  }
 
   // SxS rate bar
   const sxsBar = document.getElementById('sxs-rate-display');
@@ -1165,6 +1185,14 @@ function updateDisplay() {
   setAdButtonsEnabled(countdown === 0 && !state.isPaused);
 }
 
+function fmtPaceDuration(totalSeconds) {
+  const s = Math.round(totalSeconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rem = s % 60;
+  return rem > 0 ? `${m}m ${rem}s` : `${m}m`;
+}
+
 function renderPaceCard(elapsedSecondsForCalc, mainRate, mainGoal, sxsRate, sxsGoal, overallRate, overallGoal) {
   const container = document.getElementById('pace-rows');
   if (!container) return;
@@ -1174,14 +1202,14 @@ function renderPaceCard(elapsedSecondsForCalc, mainRate, mainGoal, sxsRate, sxsG
     if (elapsedSecondsForCalc < 10) {
       return `<div class="pace-row"><span class="pace-label">${label}</span><span class="pace-val muted">just started</span></div>`;
     }
-    const neededMin = (goal - rate) * elapsedHours;
-    if (neededMin <= 0) {
-      return `<div class="pace-row"><span class="pace-label">${label}</span><span class="pace-val good">✓ On pace — ${(-neededMin).toFixed(2)} min ahead</span></div>`;
+    const neededSeconds = (goal - rate) * elapsedHours * 60;
+    if (neededSeconds <= 0) {
+      return `<div class="pace-row"><span class="pace-label">${label}</span><span class="pace-val good">✓ On pace — ${fmtPaceDuration(-neededSeconds)} ahead</span></div>`;
     }
-    return `<div class="pace-row"><span class="pace-label">${label}</span><span class="pace-val bad">Need ${neededMin.toFixed(2)} more ad-min (${Math.ceil(neededMin*60)}s) to hit goal</span></div>`;
+    return `<div class="pace-row"><span class="pace-label">${label}</span><span class="pace-val bad">Need ${fmtPaceDuration(neededSeconds)} more to hit goal</span></div>`;
   }
 
-  const rows = [paceRow('Cloud + Local', mainRate, mainGoal)];
+  const rows = [paceRow('Fullscreen', mainRate, mainGoal)];
   if (state.sxsEnabled) rows.push(paceRow('Side-by-Side', sxsRate, sxsGoal));
   rows.push(paceRow('Overall', overallRate, overallGoal));
 
@@ -1311,7 +1339,7 @@ function refreshLog() {
     const t = new Date(ev.timestamp);
     const ts = t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true});
     const typeClass = ev.type === 'local' ? 'local' : (ev.type === 'sxs' ? 'sxs' : 'cloud');
-    const badge = ev.type === 'local' ? '📡 Local' : (ev.type === 'sxs' ? '🔀 SxS' : '☁ Cloud');
+    const badge = ev.type === 'local' ? '📡 Direct Sold' : (ev.type === 'sxs' ? '🔀 SxS' : '☁ Cloud');
     return `<div class="log-entry">
       <span>${ts}</span>
       <span class="log-type-badge ${typeClass}">${badge}</span>
@@ -1391,7 +1419,7 @@ function exportJSON(elapsed) {
 
   const startDate = new Date(state.startDisplayMs || state.startTimeMs).toISOString().split('T')[0];
   const payload = {
-    version: '0.20',
+    version: '0.21',
     start_time: new Date(state.startDisplayMs || state.startTimeMs).toISOString(),
     ad_goal: state.goal,
     sxs_enabled: state.sxsEnabled,
@@ -1478,7 +1506,7 @@ function generateReport(elapsed) {
   // Local ad log
   const localEvents = state.todayEvents.filter(e => e.type === 'local');
   const localLogRows = localEvents.length === 0
-    ? '<tr><td colspan="3" style="color:#8892a4;text-align:center;">No local ads logged today</td></tr>'
+    ? '<tr><td colspan="3" style="color:#8892a4;text-align:center;">No direct sold ads logged today</td></tr>'
     : localEvents.map(ev => {
         const t = new Date(ev.timestamp);
         const ts = t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true});
@@ -1540,7 +1568,7 @@ function generateReport(elapsed) {
 <div class="page">
   <button class="print-btn" onclick="window.print()">🖨 Save as PDF (Print → Save as PDF)</button>
   <h1>${escHtml(eventNameStr)} — Ad Report</h1>
-  <div class="subtitle">${reportDate}${eventDayStr} &nbsp;·&nbsp; Goal: ${state.goal.toFixed(2)} Ad min/Ehr${state.sxsEnabled ? ` &nbsp;·&nbsp; SxS Goal: ${state.sxsGoal.toFixed(2)} min/Ehr` : ''}</div>
+  <div class="subtitle">${reportDate}${eventDayStr} &nbsp;·&nbsp; Fullscreen Goal: ${state.goal.toFixed(2)} Ad min/Ehr${state.sxsEnabled ? ` &nbsp;·&nbsp; SxS Goal: ${state.sxsGoal.toFixed(2)} min/Ehr` : ''}</div>
 
   <!-- Summary stats -->
   <div class="stats-grid">
@@ -1550,7 +1578,7 @@ function generateReport(elapsed) {
       <div class="stat-sub">Ad min/Ehr (cum, goal ${overallGoal.toFixed(2)})</div>
     </div>
     <div class="stat-card ${cumMainRate >= state.goal ? 'green' : 'red'}">
-      <div class="stat-label">Cloud+Local Rate</div>
+      <div class="stat-label">Fullscreen Rate</div>
       <div class="stat-value">${cumMainRate.toFixed(2)}</div>
       <div class="stat-sub">Ad min/Ehr (cum)</div>
     </div>
@@ -1576,7 +1604,7 @@ function generateReport(elapsed) {
       <div class="stat-sub">min today (${cloudPct}%)</div>
     </div>
     <div class="stat-card coral">
-      <div class="stat-label">📡 Local</div>
+      <div class="stat-label">📡 Direct Sold</div>
       <div class="stat-value">${(state.todayLocalSeconds/60).toFixed(2)}</div>
       <div class="stat-sub">min today (${localPct}%)</div>
     </div>
@@ -1604,12 +1632,12 @@ function generateReport(elapsed) {
   <!-- Per-hour table -->
   <div class="section-title">Per-Hour Summary</div>
   <table>
-    <thead><tr><th>Period</th><th>☁ Cloud (min)</th><th>📡 Local (min)</th>${state.sxsEnabled ? '<th>🔀 SxS (min)</th>' : ''}<th>Total (min)</th><th>Rate (min/hr)</th><th>Goal</th></tr></thead>
+    <thead><tr><th>Period</th><th>☁ Cloud (min)</th><th>📡 Direct Sold (min)</th>${state.sxsEnabled ? '<th>🔀 SxS (min)</th>' : ''}<th>Total (min)</th><th>Rate (min/hr)</th><th>Goal</th></tr></thead>
     <tbody>${tableRows}</tbody>
   </table>
 
-  <!-- Local ad log -->
-  <div class="section-title">Local Ad Log</div>
+  <!-- Direct sold ad log -->
+  <div class="section-title">Direct Sold Ad Log</div>
   <table>
     <thead><tr><th>Time</th><th>Spot Name</th><th>Duration</th></tr></thead>
     <tbody>${localLogRows}</tbody>
@@ -1625,7 +1653,7 @@ function generateReport(elapsed) {
 </div>
 
 <script>
-const pieLabels = ['☁ Cloud', '📡 Local'${state.sxsEnabled ? ", '🔀 Side-by-Side'" : ''}];
+const pieLabels = ['☁ Cloud', '📡 Direct Sold'${state.sxsEnabled ? ", '🔀 Side-by-Side'" : ''}];
 const pieData = [${state.todayCloudSeconds}, ${state.todayLocalSeconds}${state.sxsEnabled ? `, ${state.todaySxsSeconds}` : ''}];
 const pieColors = ['#4f6ef7','#f97066'${state.sxsEnabled ? ", '#22d3ee'" : ''}];
 
@@ -1642,7 +1670,7 @@ new Chart(pieCtx, {
 const barCtx = document.getElementById('bar-chart').getContext('2d');
 const barDatasets = [
   { label: '☁ Cloud', data: ${JSON.stringify(barCloud)}, backgroundColor: '#4f6ef7' },
-  { label: '📡 Local', data: ${JSON.stringify(barLocal)}, backgroundColor: '#f97066' },
+  { label: '📡 Direct Sold', data: ${JSON.stringify(barLocal)}, backgroundColor: '#f97066' },
 ];
 ${state.sxsEnabled ? `barDatasets.push({ label: '🔀 Side-by-Side', data: ${JSON.stringify(barSxs)}, backgroundColor: '#22d3ee' });` : ''}
 barDatasets.push({ label: 'Goal', data: Array(${barLabels.length}).fill(${barGoal}), type: 'line', borderColor: '#ef4444', borderDash: [5,5], borderWidth: 2, pointRadius: 0, fill: false });
