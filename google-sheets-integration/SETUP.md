@@ -28,43 +28,18 @@ app's UI.
    wired into the app.
 
 That's it on the code side — the `Broadcasts` tab and its header row are
-created automatically the first time a broadcast is logged. You can re-run
-**Deploy → Manage deployments → Edit → New version** any time you change the
-script (e.g. adding/removing a column in the `COLUMNS` list at the top of
-`Code.gs`).
+created automatically the first time a broadcast is logged. If you edit the
+`COLUMNS` list in `Code.gs` later (to add/remove a tracked field), re-paste
+the updated script, **Deploy → Manage deployments → Edit → New version**, and
+the header row will auto-update to match on the next log (existing data rows
+are left alone).
 
-## 3. Dashboard tab
+## 3. Interactive dashboard
 
-Add a new sheet tab named `Dashboard` and paste these formulas in (adjust
-cell references as you like — these all just read from `Broadcasts`):
+For the filterable dashboard (by Producer, Vertical, Week, Fullscreen/SxS
+goal met) with charts, see **[DASHBOARD.md](./DASHBOARD.md)**.
 
-| Cell | Formula | What it shows |
-|---|---|---|
-| B2 | `=COUNTA(Broadcasts!A2:A)` | Total broadcasts logged |
-| B3 | `=SUM(Broadcasts!X2:X)` | Total ad minutes tracked across all broadcasts |
-| B4 | `=COUNTIF(Broadcasts!L2:L,TRUE)/COUNTA(Broadcasts!L2:L)` | % of broadcasts that hit the Fullscreen goal (format as %) |
-| B5 | `=COUNTIFS(Broadcasts!M2:M,TRUE,Broadcasts!Q2:Q,TRUE)/COUNTIF(Broadcasts!M2:M,TRUE)` | % of SxS-enabled broadcasts that hit the SxS goal (format as %) |
-
-**Broadcasts by Producer** (paste in, say, `D2`):
-```
-=QUERY(Broadcasts!A:Z,"select F, count(A) where A is not null group by F order by count(A) desc label F 'Producer', count(A) 'Broadcasts'",1)
-```
-
-**Broadcasts by Vertical** (paste in `G2`):
-```
-=QUERY(Broadcasts!A:Z,"select E, count(A), sum(X) where A is not null group by E order by count(A) desc label E 'Vertical', count(A) 'Broadcasts', sum(X) 'Total Ad Min'",1)
-```
-
-**Most recent 10 broadcasts** (paste in `K2`):
-```
-=QUERY(Broadcasts!A:Z,"select A,C,E,F,X,L order by A desc limit 10 label A 'Submitted', C 'Event', E 'Vertical', F 'Producer', X 'Total Min', L 'Goal Met'",1)
-```
-
-To add a chart: select the output range of the "Broadcasts by Vertical" query
-→ **Insert → Chart** → pick a column/bar chart. Sheets will keep it live as
-new rows come in.
-
-## Column reference (`Broadcasts` tab, A–Z)
+## Column reference (`Broadcasts` tab)
 
 | Col | Field |
 |---|---|
@@ -94,6 +69,9 @@ new rows come in.
 | X | Total Min Today |
 | Y | Total Min Cumulative |
 | Z | App Version |
+| AA | Week Label (e.g. "2026-W32", computed automatically) |
+| AB | Event Type — `final` (Stop Broadcast clicked), `heartbeat` (periodic snapshot every ~5 min while running), `unload` (tab closed mid-broadcast), `reset` (Reset clicked mid-broadcast) |
+| AC | Session ID — same value across every row (heartbeats + final) from one broadcast session |
 
 Times are logged in UTC (`submitted_at`/`broadcast_start`) since that's what
 the browser gives us — convert in a formula if you want local time, e.g.
@@ -102,5 +80,4 @@ the browser gives us — convert in a formula if you want local time, e.g.
 ## Once deployed
 
 Send the `/exec` URL back and it'll be added as the app's
-`SHEETS_WEBHOOK_URL` constant (currently blank, so logging is a no-op until
-then) — no other code changes needed.
+`SHEETS_WEBHOOK_URL` constant — no other code changes needed.
