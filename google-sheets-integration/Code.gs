@@ -48,6 +48,7 @@ var COLUMNS = [
   ['Week Label', weekLabelFromData_], // computed server-side, e.g. "2026-W32" — used for the dashboard's week filter
   ['Event Type', 'event_type'], // 'final' (Stop Broadcast clicked), 'heartbeat' (periodic, every few min while running), 'unload' (tab closed mid-broadcast), 'reset' (Reset clicked mid-broadcast)
   ['Session ID', 'session_id'], // same value for every row (heartbeats + final) from one broadcast session — use to spot sessions with heartbeats but no 'final' row
+  ['Time Zone', 'timezone'], // producer-selected zone the broadcast was entered in (Eastern/Central/Mountain/Pacific) — Submitted At/Broadcast Start above are still UTC
 ];
 
 function doPost(e) {
