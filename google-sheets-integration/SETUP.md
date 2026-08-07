@@ -72,10 +72,15 @@ goal met) with charts, see **[DASHBOARD.md](./DASHBOARD.md)**.
 | AA | Week Label (e.g. "2026-W32", computed automatically) |
 | AB | Event Type — `final` (Stop Broadcast clicked), `heartbeat` (periodic snapshot every ~5 min while running), `unload` (tab closed mid-broadcast), `reset` (Reset clicked mid-broadcast) |
 | AC | Session ID — same value across every row (heartbeats + final) from one broadcast session |
+| AD | Time Zone — the zone the producer selected when starting the broadcast (Eastern/Central/Mountain/Pacific) |
 
-Times are logged in UTC (`submitted_at`/`broadcast_start`) since that's what
-the browser gives us — convert in a formula if you want local time, e.g.
-`=A2 - TIME(5,0,0)` for Eastern during standard time.
+Times are logged in UTC (`submitted_at`/`broadcast_start`) — the app converts
+whatever the producer enters (in the zone they picked, DST-aware) into the
+correct absolute UTC instant before sending it. Column AD tells you which
+zone that was. If you want a column showing local wall-clock time, factor in
+both the zone *and* whether DST was in effect on that date — a fixed offset
+like `=A2 - TIME(5,0,0)` is only correct for Eastern Standard Time (winter);
+during Eastern Daylight Time it should be `-TIME(4,0,0)` instead.
 
 ## Once deployed
 
