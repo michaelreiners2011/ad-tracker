@@ -49,6 +49,29 @@ var COLUMNS = [
   ['Event Type', 'event_type'], // 'final' (Stop Broadcast clicked), 'heartbeat' (periodic, every few min while running), 'unload' (tab closed mid-broadcast), 'reset' (Reset clicked mid-broadcast)
   ['Session ID', 'session_id'], // same value for every row (heartbeats + final) from one broadcast session — use to spot sessions with heartbeats but no 'final' row
   ['Time Zone', 'timezone'], // producer-selected zone the broadcast was entered in (Eastern/Central/Mountain/Pacific) — Submitted At/Broadcast Start above are still UTC
+  ['Submitted At (Epoch ms)', epochMsFromData_], // plain number, immune to Sheets' date auto-conversion — used by Cleanup.gs for reliable "how long ago" comparisons
+  ['Broadcast Mode', 'broadcast_mode'], // 'internal' or 'feed_provider' — which setup-screen mode the broadcast ran in
+];
+
+// Second tab: one row per INDIVIDUAL ad break (Direct Sold / Promo / Upcoming Schedule only —
+// Cloud/SxS are not included), so run timestamps can be cross-referenced against concurrent
+// viewership data. Sent as a batch (payload_type: 'ad_events') piggybacked on the same
+// heartbeat/final/unload/reset cadence as the Broadcasts row above, not one POST per click.
+var AD_EVENTS_SHEET_NAME = 'Ad Events';
+var AD_EVENTS_COLUMNS = [
+  ['Submitted At (UTC)', function (d) { return new Date().toISOString(); }],
+  ['Broadcast Start (UTC)', 'broadcast_start'],
+  ['Session ID', 'session_id'],
+  ['Event Name', 'event_name'],
+  ['Event Day', 'event_day'],
+  ['Vertical', 'vertical'],
+  ['App Version', 'app_version'],
+  ['Category', 'category'], // 'local' (Direct Sold) | 'promo' | 'schedule'
+  ['Spot Name', 'name'],
+  ['Duration Seconds', 'duration_seconds'],
+  ['Duration Minutes', function (d) { return d.duration_seconds != null ? Math.round((d.duration_seconds / 60) * 100) / 100 : ''; }],
+  ['Break Timestamp (UTC)', 'timestamp'], // when the ad break itself ran, not when this row was submitted
+  ['Submitted At (Epoch ms)', function (d) { return Date.now(); }],
 ];
 
 function doPost(e) {
@@ -56,7 +79,10 @@ function doPost(e) {
   lock.waitLock(10000);
   try {
     var data = JSON.parse(e.postData.contents);
-    var sheet = getOrCreateSheet_();
+    if (data.payload_type === 'ad_events') {
+      return handleAdEventsBatch_(data);
+    }
+    var sheet = getOrCreateSheet_(SHEET_NAME, COLUMNS);
     var row = COLUMNS.map(function (c) {
       var accessor = c[1];
       var v = typeof accessor === 'function' ? accessor(data) : data[accessor];
@@ -71,13 +97,33 @@ function doPost(e) {
   }
 }
 
-function getOrCreateSheet_() {
+/** One row per event in data.events — same COLUMNS-mapping convention, applied per event. */
+function handleAdEventsBatch_(data) {
+  var sheet = getOrCreateSheet_(AD_EVENTS_SHEET_NAME, AD_EVENTS_COLUMNS);
+  var events = data.events || [];
+  events.forEach(function (ev) {
+    // Merge the batch-level fields (session_id, event_name, etc.) with this one event's fields
+    // so each AD_EVENTS_COLUMNS accessor can read from a single flat object.
+    var merged = {};
+    for (var k in data) merged[k] = data[k];
+    for (var k2 in ev) merged[k2] = ev[k2];
+    var row = AD_EVENTS_COLUMNS.map(function (c) {
+      var accessor = c[1];
+      var v = typeof accessor === 'function' ? accessor(merged) : merged[accessor];
+      return v === undefined || v === null ? '' : v;
+    });
+    sheet.appendRow(row);
+  });
+  return jsonResponse_({ ok: true, rows: events.length });
+}
+
+function getOrCreateSheet_(sheetName, columns) {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheet = ss.getSheetByName(SHEET_NAME);
+  var sheet = ss.getSheetByName(sheetName);
   if (!sheet) {
-    sheet = ss.insertSheet(SHEET_NAME);
+    sheet = ss.insertSheet(sheetName);
   }
-  var headers = COLUMNS.map(function (c) { return c[0]; });
+  var headers = columns.map(function (c) { return c[0]; });
   var existing = sheet.getLastRow() > 0 && sheet.getLastColumn() > 0
     ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0]
     : [];
@@ -121,7 +167,15 @@ function weekLabelFromData_(data) {
   return iso.year + '-W' + (iso.week < 10 ? '0' : '') + iso.week;
 }
 
-/** Optional: run manually once (select this function, then Run) to sanity-check the sheet/header exist. */
+/** Plain epoch-ms number for submitted_at (falls back to broadcast_start), or '' if unparseable. */
+function epochMsFromData_(data) {
+  var t = Date.parse(data.submitted_at);
+  if (isNaN(t)) t = Date.parse(data.broadcast_start);
+  return isNaN(t) ? '' : t;
+}
+
+/** Optional: run manually once (select this function, then Run) to sanity-check both sheets/headers exist. */
 function setup() {
-  getOrCreateSheet_();
+  getOrCreateSheet_(SHEET_NAME, COLUMNS);
+  getOrCreateSheet_(AD_EVENTS_SHEET_NAME, AD_EVENTS_COLUMNS);
 }

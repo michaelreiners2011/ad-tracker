@@ -39,6 +39,12 @@ are left alone).
 For the filterable dashboard (by Producer, Vertical, Week, Fullscreen/SxS
 goal met) with charts, see **[DASHBOARD.md](./DASHBOARD.md)**.
 
+## 4. Daily heartbeat cleanup
+
+Heartbeats (logged every ~5 min while a broadcast runs) will otherwise grow
+the sheet indefinitely toward Google Sheets' 10M-cell limit. See
+**[CLEANUP.md](./CLEANUP.md)** to set up automatic daily pruning.
+
 ## Column reference (`Broadcasts` tab)
 
 | Col | Field |
@@ -73,6 +79,40 @@ goal met) with charts, see **[DASHBOARD.md](./DASHBOARD.md)**.
 | AB | Event Type — `final` (Stop Broadcast clicked), `heartbeat` (periodic snapshot every ~5 min while running), `unload` (tab closed mid-broadcast), `reset` (Reset clicked mid-broadcast) |
 | AC | Session ID — same value across every row (heartbeats + final) from one broadcast session |
 | AD | Time Zone — the zone the producer selected when starting the broadcast (Eastern/Central/Mountain/Pacific) |
+| AE | Submitted At (Epoch ms) — plain number version of column A, immune to Sheets' date auto-conversion; used by `Cleanup.gs` (see [CLEANUP.md](./CLEANUP.md)) |
+| AF | Broadcast Mode — `internal` (Flo Internal Production) or `feed_provider` (simplified partner version) |
+
+**After this update, redeploy `Code.gs` and then run `setup()` once** (function
+dropdown in the Apps Script editor → `setup` → Run) — redeploying alone does
+not retroactively rewrite an existing sheet's header row; that only happens
+the next time the script actually executes.
+
+## Column reference (`Ad Events` tab)
+
+A second tab, created automatically the first time a Direct Sold/Promo/Upcoming
+Schedule ad break is logged (or by running `setup()`). One row per individual
+ad break — not per broadcast — so exact run timestamps can be cross-referenced
+against concurrent viewership data.
+
+| Col | Field |
+|---|---|
+| A | Submitted At (UTC) |
+| B | Broadcast Start (UTC) |
+| C | Session ID |
+| D | Event Name |
+| E | Event Day |
+| F | Vertical |
+| G | App Version |
+| H | Category — `local` (Direct Sold), `promo`, or `schedule` |
+| I | Spot Name |
+| J | Duration Seconds |
+| K | Duration Minutes |
+| L | Break Timestamp (UTC) — when the ad break itself ran (not when this row was submitted) |
+| M | Submitted At (Epoch ms) |
+
+Cloud and Side-by-Side ad breaks are intentionally not logged here — this tab
+exists specifically for the named/identifiable spots (Direct Sold, Promo,
+Upcoming Schedule) that get compared against viewership numbers.
 
 Times are logged in UTC (`submitted_at`/`broadcast_start`) — the app converts
 whatever the producer enters (in the zone they picked, DST-aware) into the
