@@ -50,6 +50,34 @@
     #setup-screen, #tracker-screen { max-width: 860px; margin: 0 auto; padding: 0 20px 60px; }
     .hidden { display: none !important; }
 
+    /* Margin log sidebar (wide screens only — narrow screens keep the Log tab) */
+    #tracker-layout { display: block; }
+    .log-sidebar { display: none; }
+    @media (min-width: 1200px) {
+      #tracker-layout:not(.hidden) {
+        display: grid;
+        grid-template-columns: 860px 280px;
+        column-gap: 24px;
+        justify-content: center;
+        align-items: start;
+      }
+      #tracker-screen { margin: 0; padding-bottom: 60px; }
+      .log-sidebar {
+        display: block;
+        position: sticky;
+        top: 20px;
+        max-height: calc(100vh - 40px);
+        overflow-y: auto;
+        background: var(--surface);
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        margin-top: 28px;
+      }
+      .log-sidebar .log-list { max-height: none; }
+      .log-sidebar-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 10px; }
+    }
+
     /* Header */
     .app-header-wrap { max-width: 860px; margin: 0 auto; padding: 28px 20px 0; }
     .app-header { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
@@ -549,7 +577,8 @@
 
 
 <!-- ═══════════════════════ TRACKER SCREEN ═══════════════════════ -->
-<div id="tracker-screen" class="hidden">
+<div id="tracker-layout" class="hidden">
+<div id="tracker-screen">
   <div class="tracker-header">
     <div class="broadcast-info">
       <div><strong id="trk-start-label">—</strong></div>
@@ -766,6 +795,16 @@
       <button class="btn btn-ghost" onclick="confirmReset()">↺ Reset</button>
     </div>
   </div>
+</div>
+
+<!-- Persistent margin log (wide screens only; narrow screens use the Log tab above) -->
+<div id="log-sidebar" class="log-sidebar">
+  <div class="log-sidebar-title">📋 Ad Log — Today</div>
+  <div class="log-list" id="log-sidebar-list">
+    <div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">No breaks logged yet.</div>
+  </div>
+</div>
+
 </div>
 
 
@@ -1453,7 +1492,7 @@ function startBroadcast(startEarly = false) {
 // ═══════════════════════════════════════════════════════════
 function buildTrackerScreen() {
   document.getElementById('setup-screen').classList.add('hidden');
-  document.getElementById('tracker-screen').classList.remove('hidden');
+  document.getElementById('tracker-layout').classList.remove('hidden');
 
   const startMs = state.startDisplayMs || state.startTimeMs;
   document.getElementById('trk-start-label').textContent =
@@ -1955,9 +1994,13 @@ function flashBtn(id, color) {
 }
 
 function refreshLog() {
-  const list = document.getElementById('ad-log-list');
+  const targets = ['ad-log-list', 'log-sidebar-list']
+    .map(id => document.getElementById(id))
+    .filter(Boolean);
+  if (!targets.length) return;
   if (!state.todayEvents.length) {
-    list.innerHTML = '<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">No breaks logged yet.</div>';
+    const empty = '<div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">No breaks logged yet.</div>';
+    targets.forEach(el => el.innerHTML = empty);
     return;
   }
   const TYPE_INFO = {
@@ -1966,7 +2009,7 @@ function refreshLog() {
     promo:    { cls: 'promo',    badge: '🎬 Promo' },
     schedule: { cls: 'schedule', badge: '🗓 Schedule' },
   };
-  list.innerHTML = state.todayEvents.map(ev => {
+  const html = state.todayEvents.map(ev => {
     const t = new Date(ev.timestamp);
     const ts = t.toLocaleTimeString('en-US',{hour:'numeric',minute:'2-digit',second:'2-digit',hour12:true});
     const info = TYPE_INFO[ev.type] || { cls: 'cloud', badge: '☁ Cloud' };
@@ -1979,6 +2022,7 @@ function refreshLog() {
       <span class="dur ${typeClass}">+${ev.seconds}s (${(ev.seconds/60).toFixed(2)} min)</span>
     </div>`;
   }).join('');
+  targets.forEach(el => el.innerHTML = html);
 }
 
 function setAdButtonsEnabled(enabled) {
@@ -2530,7 +2574,7 @@ function resetToSetup() {
   state.timerRunning = false; state.isPaused = false;
   state.todayCloudSeconds = 0; state.todayLocalSeconds = 0; state.todaySxsSeconds = 0; state.todayPromoSeconds = 0;
   state.todayBreaks = []; state.todayEvents = []; state.todayCounts = {}; state.pendingAdEventsForSheet = [];
-  document.getElementById('tracker-screen').classList.add('hidden');
+  document.getElementById('tracker-layout').classList.add('hidden');
   document.getElementById('setup-screen').classList.remove('hidden');
   renderLocalLibSetup();
   renderPromoLibSetup();
