@@ -271,6 +271,25 @@
     .recovery-banner p { font-size: 0.88rem; color: var(--text); }
     .recovery-banner p span { color: var(--brand); font-weight: 600; }
 
+    /* Validation banner (missing/invalid required fields on Start Broadcast) */
+    .validation-banner {
+      background: linear-gradient(135deg, #2a1414, #241010); border: 1px solid var(--red);
+      border-radius: 8px; padding: 14px 18px; margin-bottom: 18px;
+    }
+    .validation-banner .validation-title { font-size: 0.88rem; font-weight: 700; color: var(--red); margin-bottom: 6px; }
+    .validation-banner ul { margin: 0; padding-left: 20px; }
+    .validation-banner li { font-size: 0.85rem; color: var(--text); margin: 3px 0; }
+    .field-error { outline: 2px solid var(--red) !important; outline-offset: 2px; border-radius: 6px; }
+
+    /* Collapsible "Manage Library" sections */
+    .lib-manage { border-top: 1px solid var(--border); margin-top: 16px; padding-top: 12px; }
+    .lib-manage-summary {
+      cursor: pointer; font-size: 0.78rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: var(--text-muted); user-select: none;
+    }
+    .lib-manage-summary:hover { color: var(--text); }
+    .lib-manage-count { text-transform: none; font-weight: 600; letter-spacing: normal; }
+
     /* Carryover notice */
     .carryover-notice { background: linear-gradient(135deg, #1a2a1a, #1e2a3a); border: 1px solid #2a4a2a; border-radius: 8px; padding: 12px 16px; font-size: 0.85rem; color: #86efac; margin-top: 14px; }
 
@@ -336,6 +355,11 @@
       <button class="btn btn-primary" onclick="recoverSession()">Recover</button>
       <button class="btn btn-ghost" onclick="dismissRecovery()">Discard</button>
     </div>
+  </div>
+
+  <div id="validation-banner" class="validation-banner hidden">
+    <div class="validation-title">⚠ Please fix the following before starting:</div>
+    <ul id="validation-list"></ul>
   </div>
 
   <!-- Broadcast Type -->
@@ -735,20 +759,21 @@
       <span class="section-label schedule">🗓 Upcoming Schedule</span>
       <div class="ad-grid" id="schedule-ad-btn-grid"></div>
     </div>
-    <hr style="border-color:var(--border);margin:16px 0;" />
-    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
-    <div id="schedule-lib-tracker-list" style="margin-bottom:12px;"></div>
-    <div class="form-row" style="align-items:flex-end;">
-      <div class="form-group">
-        <label>Series Name</label>
-        <input type="text" id="inp-schedule-name-trk" placeholder="e.g. Hoops Schedule" style="width:150px;" />
+    <details class="lib-manage">
+      <summary class="lib-manage-summary">Manage Library <span id="schedule-lib-count" class="lib-manage-count"></span></summary>
+      <div id="schedule-lib-tracker-list" style="margin:12px 0;"></div>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="form-group">
+          <label>Series Name</label>
+          <input type="text" id="inp-schedule-name-trk" placeholder="e.g. Hoops Schedule" style="width:150px;" />
+        </div>
+        <div class="form-group">
+          <label>Duration (sec)</label>
+          <input type="number" id="inp-schedule-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
+        </div>
+        <button class="btn btn-schedule btn-sm" onclick="addScheduleAdFromTracker()">+ Add</button>
       </div>
-      <div class="form-group">
-        <label>Duration (sec)</label>
-        <input type="number" id="inp-schedule-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
-      </div>
-      <button class="btn btn-schedule btn-sm" onclick="addScheduleAdFromTracker()">+ Add</button>
-    </div>
+    </details>
   </div>
 
   <!-- Log (hidden on wide screens — the margin log already covers it there) -->
@@ -994,6 +1019,14 @@ function buildSetupForm() {
   for (let m = 0; m < 60; m++) { const o = document.createElement('option'); o.value = m; o.textContent = String(m).padStart(2,'0'); mns.appendChild(o); }
   mns.value = now.getMinutes();
   document.getElementById('sel-ampm').value = now.getHours() < 12 ? 'AM' : 'PM';
+
+  // Clear a field's red error outline as soon as the producer edits it
+  ['inp-goal', 'inp-sxs-goal', 'sel-vertical', 'inp-lead-producer', 'inp-event-name', 'inp-event-day'].forEach(id => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', () => el.classList.remove('field-error'));
+    el.addEventListener('change', () => el.classList.remove('field-error'));
+  });
 }
 
 function populateDays() {
@@ -1009,6 +1042,8 @@ function populateDays() {
 
 function selectBroadcastMode(mode) {
   state.broadcastMode = mode;
+  document.getElementById('mode-btn-feed_provider').classList.remove('field-error');
+  document.getElementById('mode-btn-internal').classList.remove('field-error');
   document.getElementById('mode-btn-feed_provider').classList.toggle('selected', mode === 'feed_provider');
   document.getElementById('mode-btn-internal').classList.toggle('selected', mode === 'internal');
   const isFeedProvider = mode === 'feed_provider';
@@ -1254,6 +1289,8 @@ function renderScheduleLibSetup() {
 
 function renderScheduleLibTracker() {
   const container = document.getElementById('schedule-lib-tracker-list');
+  const countEl = document.getElementById('schedule-lib-count');
+  if (countEl) countEl.textContent = state.scheduleLibrary.length ? `(${state.scheduleLibrary.length})` : '';
   if (!container) return;
   if (!state.scheduleLibrary.length) {
     container.innerHTML = '<div class="lib-empty">Library is empty.</div>';
@@ -1401,7 +1438,25 @@ function fmtInTimeZone(ms, timeZone, options) {
 // ═══════════════════════════════════════════════════════════
 //  START BROADCAST
 // ═══════════════════════════════════════════════════════════
+function clearValidationErrors() {
+  document.getElementById('validation-banner').classList.add('hidden');
+  document.querySelectorAll('.field-error').forEach(el => el.classList.remove('field-error'));
+}
+
+function showValidationErrors(errors) {
+  document.getElementById('validation-list').innerHTML = errors.map(e => `<li>${escHtml(e.message)}</li>`).join('');
+  errors.forEach(e => (e.fieldIds || []).forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('field-error');
+  }));
+  const banner = document.getElementById('validation-banner');
+  banner.classList.remove('hidden');
+  banner.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 function startBroadcast(startEarly = false) {
+  clearValidationErrors();
+
   const y = parseInt(document.getElementById('sel-year').value);
   const mo = parseInt(document.getElementById('sel-month').value);
   const d = parseInt(document.getElementById('sel-day').value);
@@ -1418,19 +1473,23 @@ function startBroadcast(startEarly = false) {
   const sxsEnabled = document.getElementById('toggle-sxs-enabled').checked;
   const sxsGoal = parseFloat(document.getElementById('inp-sxs-goal').value);
 
-  if (!state.broadcastMode) { alert('Please select Simple or Advanced.'); return; }
-  if (isNaN(goal) || goal < 0) { alert('Please enter a valid ad goal.'); return; }
-  if (sxsEnabled && (isNaN(sxsGoal) || sxsGoal < 0)) { alert('Please enter a valid SxS ad goal.'); return; }
-  if (!vertical) { alert('Please select a vertical.'); return; }
-  if (!leadProducer) { alert('Please enter the Lead Producer.'); return; }
-  if (!en) { alert('Please enter the Event Name.'); return; }
-  if (!ed) { alert('Please enter the Event Day #.'); return; }
-  if (isNaN(y) || isNaN(mo) || isNaN(d) || isNaN(h) || isNaN(mn)) { alert('Invalid date/time.'); return; }
+  const errors = [];
+  if (!state.broadcastMode) errors.push({ message: 'Broadcast Type — choose Simple or Advanced.', fieldIds: ['mode-btn-feed_provider', 'mode-btn-internal'] });
+  if (isNaN(goal) || goal < 0) errors.push({ message: 'Fullscreen Ad Goal (min/hr) — enter a valid number.', fieldIds: ['inp-goal'] });
+  if (sxsEnabled && (isNaN(sxsGoal) || sxsGoal < 0)) errors.push({ message: 'SxS Goal (min/hr) — enter a valid number.', fieldIds: ['inp-sxs-goal'] });
+  if (!vertical) errors.push({ message: 'Vertical — select one.', fieldIds: ['sel-vertical'] });
+  if (!leadProducer) errors.push({ message: 'Lead Producer — enter a name.', fieldIds: ['inp-lead-producer'] });
+  if (!en) errors.push({ message: 'Event Name — enter a name.', fieldIds: ['inp-event-name'] });
+  if (!ed) errors.push({ message: 'Event Day # — enter a value.', fieldIds: ['inp-event-day'] });
+  if (isNaN(y) || isNaN(mo) || isNaN(d) || isNaN(h) || isNaN(mn)) errors.push({ message: 'Broadcast Date & Start Time — invalid date/time.', fieldIds: [] });
+
+  if (errors.length) { showValidationErrors(errors); return; }
+
   if (ap === 'PM' && h !== 12) h += 12;
   if (ap === 'AM' && h === 12) h = 0;
 
   const scheduledMs = zonedTimeToUtcMs(y, mo, d, h, mn, timezone);
-  if (isNaN(scheduledMs)) { alert('Invalid date/time.'); return; }
+  if (isNaN(scheduledMs)) { showValidationErrors([{ message: 'Broadcast Date & Start Time — invalid date/time.', fieldIds: [] }]); return; }
 
   const anchorMs = startEarly ? Date.now() : scheduledMs;
   state.sessionId = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
