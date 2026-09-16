@@ -76,6 +76,8 @@
       }
       .log-sidebar .log-list { max-height: none; }
       .log-sidebar-title { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); margin-bottom: 10px; }
+      /* The Log box is redundant here — the margin sidebar already shows it */
+      #tab-log { display: none; }
     }
 
     /* Header */
@@ -150,22 +152,7 @@
     .btn-sm        { padding: 6px 12px; font-size: 0.8rem; }
     .btn-row       { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
 
-    /* Tabs */
-    .tab-bar { display: flex; gap: 4px; margin-bottom: 0; border-bottom: 1px solid var(--border); }
-    .tab-btn {
-      padding: 10px 18px; font-size: 0.88rem; font-weight: 600; cursor: pointer;
-      border: none; background: transparent; color: var(--text-muted); border-bottom: 2px solid transparent;
-      transition: color 0.15s, border-color 0.15s; margin-bottom: -1px;
-    }
-    .tab-btn:hover { color: var(--text); }
-    .tab-btn.active { color: var(--brand); border-bottom-color: var(--brand); }
-    .tab-btn.cloud-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
-    .tab-btn.local-tab.active { color: var(--local); border-bottom-color: var(--local); }
-    .tab-btn.sxs-tab.active { color: var(--sxs); border-bottom-color: var(--sxs); }
-    .tab-btn.promo-tab.active { color: var(--promo); border-bottom-color: var(--promo); }
-    .tab-btn.schedule-tab.active { color: var(--schedule); border-bottom-color: var(--schedule); }
-    .tab-panel { display: none; padding-top: 18px; }
-    .tab-panel.active { display: block; }
+    /* Ad category sections render as stacked .card boxes — see #tab-tracker etc. below */
 
     /* Tracker header */
     .tracker-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; flex-wrap: wrap; gap: 8px; }
@@ -676,113 +663,103 @@
     </label>
   </div>
 
-  <!-- Tabs: Cloud | Side-by-Side | Direct Sold | Log -->
-  <div class="card" style="padding:0 22px;">
-    <div class="tab-bar">
-      <button class="tab-btn cloud-tab active" id="tab-tracker-btn" onclick="switchTab('tracker')">☁ Cloud Ads</button>
-      <button class="tab-btn sxs-tab hidden" id="tab-sxs-btn" onclick="switchTab('sxs')">🔀 Side-by-Side</button>
-      <button class="tab-btn local-tab" id="tab-local-btn" onclick="switchTab('local')">📡 Direct Sold Ads</button>
-      <button class="tab-btn promo-tab" id="tab-promo-btn" onclick="switchTab('promo')">🎬 Promo</button>
-      <button class="tab-btn schedule-tab" id="tab-schedule-btn" onclick="switchTab('schedule')">🗓 Upcoming Schedule</button>
-      <button class="tab-btn" id="tab-log-btn" onclick="switchTab('log')">📋 Log</button>
-    </div>
+  <!-- Ad category sections: stacked boxes, scroll to reach each one (no tab clicking) -->
 
-    <!-- Cloud Ads Tab -->
-    <div class="tab-panel active" id="tab-tracker">
-      <div class="ad-section">
-        <span class="section-label cloud">☁ Cloud Ads</span>
-        <div class="ad-grid" id="ad-btn-grid"></div>
-      </div>
+  <!-- Cloud Ads -->
+  <div class="tab-panel card" id="tab-tracker">
+    <div class="ad-section">
+      <span class="section-label cloud">☁ Cloud Ads</span>
+      <div class="ad-grid" id="ad-btn-grid"></div>
     </div>
+  </div>
 
-    <!-- Side-by-Side Ads Tab -->
-    <div class="tab-panel" id="tab-sxs">
-      <div class="ad-section">
-        <span class="section-label sxs">🔀 Side-by-Side Ads</span>
-        <div class="ad-grid" id="sxs-ad-btn-grid"></div>
-      </div>
+  <!-- Side-by-Side Ads (hidden unless enabled for this broadcast) -->
+  <div class="tab-panel card hidden" id="tab-sxs">
+    <div class="ad-section">
+      <span class="section-label sxs">🔀 Side-by-Side Ads</span>
+      <div class="ad-grid" id="sxs-ad-btn-grid"></div>
     </div>
+  </div>
 
-    <!-- Direct Sold Ads Tab -->
-    <div class="tab-panel" id="tab-local">
-      <div class="ad-section">
-        <span class="section-label local">📡 Direct Sold Ads</span>
-        <div class="ad-grid" id="local-ad-btn-grid">
-          <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No direct sold ads in library. Add them below.</div>
-        </div>
-      </div>
-      <hr style="border-color:var(--border);margin:16px 0;" />
-      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
-      <div id="local-lib-tracker-list" style="margin-bottom:12px;"></div>
-      <div class="form-row" style="align-items:flex-end;">
-        <div class="form-group">
-          <label>Spot Name</label>
-          <input type="text" id="inp-local-name-trk" placeholder="e.g. Ford 60s" style="width:150px;" />
-        </div>
-        <div class="form-group">
-          <label>Duration (sec)</label>
-          <input type="number" id="inp-local-dur-trk" placeholder="60" min="1" max="3600" style="width:90px;" />
-        </div>
-        <button class="btn btn-local btn-sm" onclick="addLocalAdFromTracker()">+ Add</button>
+  <!-- Direct Sold Ads -->
+  <div class="tab-panel card" id="tab-local">
+    <div class="ad-section">
+      <span class="section-label local">📡 Direct Sold Ads</span>
+      <div class="ad-grid" id="local-ad-btn-grid">
+        <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No direct sold ads in library. Add them below.</div>
       </div>
     </div>
-
-    <!-- Promo Tab -->
-    <div class="tab-panel" id="tab-promo">
-      <div class="ad-section">
-        <span class="section-label promo">🎬 Promo</span>
-        <div class="ad-grid" id="promo-ad-btn-grid">
-          <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No promos in library. Add them below.</div>
-        </div>
+    <hr style="border-color:var(--border);margin:16px 0;" />
+    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
+    <div id="local-lib-tracker-list" style="margin-bottom:12px;"></div>
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group">
+        <label>Spot Name</label>
+        <input type="text" id="inp-local-name-trk" placeholder="e.g. Ford 60s" style="width:150px;" />
       </div>
-      <hr style="border-color:var(--border);margin:16px 0;" />
-      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
-      <div id="promo-lib-tracker-list" style="margin-bottom:12px;"></div>
-      <div class="form-row" style="align-items:flex-end;">
-        <div class="form-group">
-          <label>Promo Name</label>
-          <input type="text" id="inp-promo-name-trk" placeholder="e.g. Fan Fest Promo" style="width:150px;" />
-        </div>
-        <div class="form-group">
-          <label>Duration (sec)</label>
-          <input type="number" id="inp-promo-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
-        </div>
-        <button class="btn btn-promo btn-sm" onclick="addPromoAdFromTracker()">+ Add</button>
+      <div class="form-group">
+        <label>Duration (sec)</label>
+        <input type="number" id="inp-local-dur-trk" placeholder="60" min="1" max="3600" style="width:90px;" />
+      </div>
+      <button class="btn btn-local btn-sm" onclick="addLocalAdFromTracker()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- Promo -->
+  <div class="tab-panel card" id="tab-promo">
+    <div class="ad-section">
+      <span class="section-label promo">🎬 Promo</span>
+      <div class="ad-grid" id="promo-ad-btn-grid">
+        <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No promos in library. Add them below.</div>
       </div>
     </div>
-
-    <!-- Upcoming Schedule Tab -->
-    <div class="tab-panel" id="tab-schedule">
-      <div class="ad-section">
-        <span class="section-label schedule">🗓 Upcoming Schedule</span>
-        <div class="ad-grid" id="schedule-ad-btn-grid"></div>
+    <hr style="border-color:var(--border);margin:16px 0;" />
+    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
+    <div id="promo-lib-tracker-list" style="margin-bottom:12px;"></div>
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group">
+        <label>Promo Name</label>
+        <input type="text" id="inp-promo-name-trk" placeholder="e.g. Fan Fest Promo" style="width:150px;" />
       </div>
-      <hr style="border-color:var(--border);margin:16px 0;" />
-      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
-      <div id="schedule-lib-tracker-list" style="margin-bottom:12px;"></div>
-      <div class="form-row" style="align-items:flex-end;">
-        <div class="form-group">
-          <label>Series Name</label>
-          <input type="text" id="inp-schedule-name-trk" placeholder="e.g. Hoops Schedule" style="width:150px;" />
-        </div>
-        <div class="form-group">
-          <label>Duration (sec)</label>
-          <input type="number" id="inp-schedule-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
-        </div>
-        <button class="btn btn-schedule btn-sm" onclick="addScheduleAdFromTracker()">+ Add</button>
+      <div class="form-group">
+        <label>Duration (sec)</label>
+        <input type="number" id="inp-promo-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
       </div>
+      <button class="btn btn-promo btn-sm" onclick="addPromoAdFromTracker()">+ Add</button>
     </div>
+  </div>
 
-    <!-- Log Tab -->
-    <div class="tab-panel" id="tab-log">
-      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Ad Log — Today</div>
-      <div class="log-list" id="ad-log-list">
-        <div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">No breaks logged yet.</div>
+  <!-- Upcoming Schedule -->
+  <div class="tab-panel card" id="tab-schedule">
+    <div class="ad-section">
+      <span class="section-label schedule">🗓 Upcoming Schedule</span>
+      <div class="ad-grid" id="schedule-ad-btn-grid"></div>
+    </div>
+    <hr style="border-color:var(--border);margin:16px 0;" />
+    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
+    <div id="schedule-lib-tracker-list" style="margin-bottom:12px;"></div>
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group">
+        <label>Series Name</label>
+        <input type="text" id="inp-schedule-name-trk" placeholder="e.g. Hoops Schedule" style="width:150px;" />
       </div>
-      <div style="margin-top:16px;">
-        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Break Counts — Today</div>
-        <div class="counts-grid" id="counts-grid"></div>
+      <div class="form-group">
+        <label>Duration (sec)</label>
+        <input type="number" id="inp-schedule-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
       </div>
+      <button class="btn btn-schedule btn-sm" onclick="addScheduleAdFromTracker()">+ Add</button>
+    </div>
+  </div>
+
+  <!-- Log (hidden on wide screens — the margin log already covers it there) -->
+  <div class="tab-panel card" id="tab-log">
+    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Ad Log — Today</div>
+    <div class="log-list" id="ad-log-list">
+      <div style="color:var(--text-muted);font-size:0.82rem;padding:8px 0;">No breaks logged yet.</div>
+    </div>
+    <div style="margin-top:16px;">
+      <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Break Counts — Today</div>
+      <div class="counts-grid" id="counts-grid"></div>
     </div>
   </div>
 
@@ -1509,13 +1486,13 @@ function buildTrackerScreen() {
   edl.textContent = parts.join(' — ');
   document.getElementById('rate-goal-val').textContent = state.goal.toFixed(2);
 
-  document.getElementById('tab-sxs-btn').classList.toggle('hidden', !state.sxsEnabled);
+  document.getElementById('tab-sxs').classList.toggle('hidden', !state.sxsEnabled);
   document.getElementById('sxs-metric-card').classList.toggle('hidden', !state.sxsEnabled);
   document.getElementById('sxs-goal-card').classList.toggle('hidden', !state.sxsEnabled);
 
-  // Feed Provider mode: Direct Sold / Promo / Upcoming Schedule are fully hidden, not just disabled
+  // Feed Provider mode: Direct Sold / Promo / Upcoming Schedule sections are fully hidden, not just disabled
   const isFeedProvider = state.broadcastMode === 'feed_provider';
-  ['tab-local-btn', 'tab-promo-btn', 'tab-schedule-btn'].forEach(id => {
+  ['tab-local', 'tab-promo', 'tab-schedule'].forEach(id => {
     const el = document.getElementById(id);
     if (el) el.classList.toggle('hidden', isFeedProvider);
   });
@@ -1636,16 +1613,6 @@ function ensureScheduleCountPills() {
       p.innerHTML = `<div class="cpv schedule" id="count-schedule-${spot.id}">0</div><div>🗓 ${escHtml(spot.name)}</div>`;
       g.appendChild(p);
     }
-  });
-}
-
-// ═══════════════════════════════════════════════════════════
-//  TAB SWITCHING
-// ═══════════════════════════════════════════════════════════
-function switchTab(name) {
-  ['tracker','sxs','local','promo','schedule','log'].forEach(t => {
-    document.getElementById(`tab-${t}`).classList.toggle('active', t === name);
-    document.getElementById(`tab-${t}-btn`).classList.toggle('active', t === name);
   });
 }
 
