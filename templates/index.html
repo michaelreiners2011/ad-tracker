@@ -713,20 +713,21 @@
         <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No direct sold ads in library. Add them below.</div>
       </div>
     </div>
-    <hr style="border-color:var(--border);margin:16px 0;" />
-    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
-    <div id="local-lib-tracker-list" style="margin-bottom:12px;"></div>
-    <div class="form-row" style="align-items:flex-end;">
-      <div class="form-group">
-        <label>Spot Name</label>
-        <input type="text" id="inp-local-name-trk" placeholder="e.g. Ford 60s" style="width:150px;" />
+    <details class="lib-manage">
+      <summary class="lib-manage-summary">Manage Library <span id="local-lib-count" class="lib-manage-count"></span></summary>
+      <div id="local-lib-tracker-list" style="margin:12px 0;"></div>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="form-group">
+          <label>Spot Name</label>
+          <input type="text" id="inp-local-name-trk" placeholder="e.g. Ford 60s" style="width:150px;" />
+        </div>
+        <div class="form-group">
+          <label>Duration (sec)</label>
+          <input type="number" id="inp-local-dur-trk" placeholder="60" min="1" max="3600" style="width:90px;" />
+        </div>
+        <button class="btn btn-local btn-sm" onclick="addLocalAdFromTracker()">+ Add</button>
       </div>
-      <div class="form-group">
-        <label>Duration (sec)</label>
-        <input type="number" id="inp-local-dur-trk" placeholder="60" min="1" max="3600" style="width:90px;" />
-      </div>
-      <button class="btn btn-local btn-sm" onclick="addLocalAdFromTracker()">+ Add</button>
-    </div>
+    </details>
   </div>
 
   <!-- Promo -->
@@ -737,20 +738,21 @@
         <div style="color:var(--text-muted);font-size:0.83rem;padding:8px 0;grid-column:1/-1;">No promos in library. Add them below.</div>
       </div>
     </div>
-    <hr style="border-color:var(--border);margin:16px 0;" />
-    <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-muted);margin-bottom:10px;">Manage Library</div>
-    <div id="promo-lib-tracker-list" style="margin-bottom:12px;"></div>
-    <div class="form-row" style="align-items:flex-end;">
-      <div class="form-group">
-        <label>Promo Name</label>
-        <input type="text" id="inp-promo-name-trk" placeholder="e.g. Fan Fest Promo" style="width:150px;" />
+    <details class="lib-manage">
+      <summary class="lib-manage-summary">Manage Library <span id="promo-lib-count" class="lib-manage-count"></span></summary>
+      <div id="promo-lib-tracker-list" style="margin:12px 0;"></div>
+      <div class="form-row" style="align-items:flex-end;">
+        <div class="form-group">
+          <label>Promo Name</label>
+          <input type="text" id="inp-promo-name-trk" placeholder="e.g. Fan Fest Promo" style="width:150px;" />
+        </div>
+        <div class="form-group">
+          <label>Duration (sec)</label>
+          <input type="number" id="inp-promo-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
+        </div>
+        <button class="btn btn-promo btn-sm" onclick="addPromoAdFromTracker()">+ Add</button>
       </div>
-      <div class="form-group">
-        <label>Duration (sec)</label>
-        <input type="number" id="inp-promo-dur-trk" placeholder="30" min="1" max="3600" style="width:90px;" />
-      </div>
-      <button class="btn btn-promo btn-sm" onclick="addPromoAdFromTracker()">+ Add</button>
-    </div>
+    </details>
   </div>
 
   <!-- Upcoming Schedule -->
@@ -1124,6 +1126,8 @@ function renderLocalLibSetup() {
 
 function renderLocalLibTracker() {
   const container = document.getElementById('local-lib-tracker-list');
+  const countEl = document.getElementById('local-lib-count');
+  if (countEl) countEl.textContent = state.localLibrary.length ? `(${state.localLibrary.length})` : '';
   if (!container) return;
   if (!state.localLibrary.length) {
     container.innerHTML = '<div class="lib-empty">Library is empty.</div>';
@@ -1206,6 +1210,8 @@ function renderPromoLibSetup() {
 
 function renderPromoLibTracker() {
   const container = document.getElementById('promo-lib-tracker-list');
+  const countEl = document.getElementById('promo-lib-count');
+  if (countEl) countEl.textContent = state.promoLibrary.length ? `(${state.promoLibrary.length})` : '';
   if (!container) return;
   if (!state.promoLibrary.length) {
     container.innerHTML = '<div class="lib-empty">Library is empty.</div>';
