@@ -262,6 +262,14 @@
     }
     .paused-banner.visible { display: block; }
 
+    /* Multi-producer sync status */
+    .sync-status {
+      background: linear-gradient(135deg, #0f1e2a, #14202c); border: 1px solid var(--brand);
+      border-radius: 8px; padding: 8px 14px; font-size: 0.83rem; color: var(--text);
+      margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+    }
+    .sync-status strong { color: var(--brand); letter-spacing: 0.04em; }
+
     /* Recovery banner */
     .recovery-banner {
       background: linear-gradient(135deg, #2a1414, #1e1616); border: 1px solid var(--brand);
@@ -362,6 +370,21 @@
     <ul id="validation-list"></ul>
   </div>
 
+  <!-- Join Existing Broadcast (multi-producer sync) -->
+  <div class="card">
+    <div class="card-title">Join Existing Broadcast</div>
+    <p style="font-size:0.83rem;color:var(--text-muted);margin-bottom:14px;">
+      If another producer already started this broadcast with multi-producer sync enabled, enter their session code here instead of setting up your own — you'll land on the same live tracker.
+    </p>
+    <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group">
+        <label>Session Code</label>
+        <input type="text" id="inp-join-code" placeholder="e.g. K7M2QX" style="width:150px;text-transform:uppercase;" maxlength="6" />
+      </div>
+      <button class="btn btn-primary btn-sm" onclick="joinBroadcast()">Join Broadcast</button>
+    </div>
+  </div>
+
   <!-- Broadcast Type -->
   <div class="card">
     <div class="card-title">Broadcast Type</div>
@@ -378,6 +401,13 @@
         <div class="mode-select-sub">All ad categories — Cloud, Direct Sold, Promo, Upcoming Schedule, SxS</div>
       </button>
     </div>
+    <label class="toggle-row" style="margin-top:16px;">
+      <span class="toggle">
+        <input type="checkbox" id="toggle-multi-producer-sync" />
+        <span class="slider"></span>
+      </span>
+      Enable multi-producer sync — let another producer join this broadcast live from their own device
+    </label>
   </div>
 
   <!-- Date & Time -->
@@ -599,6 +629,11 @@
       <div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.06em;">Now</div>
       <div id="now-time">—</div>
     </div>
+  </div>
+
+  <div id="sync-status" class="sync-status hidden">
+    <span>📡 Multi-producer sync active — Session Code: <strong id="sync-code-value">—</strong></span>
+    <button class="btn btn-ghost btn-sm" id="sync-copy-btn" onclick="copyJoinLink()">Copy Join Link</button>
   </div>
 
   <div id="paused-banner" class="paused-banner">⏸ BROADCAST PAUSED — ad buttons disabled</div>
@@ -846,6 +881,17 @@
   </div>
 </div>
 
+<div id="modal-remote-stop" class="modal-overlay hidden">
+  <div class="modal-box">
+    <h2 id="remote-stop-title">Broadcast stopped by another user</h2>
+    <p id="remote-stop-body">Download event report?</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost" onclick="acknowledgeRemoteStop(false)">No</button>
+      <button class="btn btn-primary" id="remote-stop-download-btn" onclick="acknowledgeRemoteStop(true)">Yes, download</button>
+    </div>
+  </div>
+</div>
+
 
 <script>
 // ═══════════════════════════════════════════════════════════
@@ -954,6 +1000,13 @@ let state = {
   totalPausedMs: 0,
   currentElapsedSeconds: 0,
   showCumulative: true,
+
+  // Multi-producer live sync (opt-in; null unless enabled for this broadcast) — see the
+  // SYNC section below. sessionCode/clientId ride along in the autosave snapshot, so
+  // crash-recovery on the same browser reconnects automatically.
+  sessionCode: null,
+  clientId: null,
+  isHeartbeatOwner: true,
 };
 
 let timerInterval = null;
@@ -963,6 +1016,12 @@ let localLibIdCounter = 1;
 let promoLibIdCounter = 1;
 let scheduleLibIdCounter = 1;
 let adEventIdCounter = 1;
+let syncPollInterval = null;
+let syncPollCursor = 0;
+let remoteStopHandled = false;
+// Guards against a poll response (in flight before our own library edit reached the server)
+// clobbering that edit with a stale snapshot — see syncPostLibrary()/pollTick().
+let libraryLocalLockUntil = 0;
 
 state.scheduleLibrary = DEFAULT_SCHEDULE_LIBRARY.map(s => ({ id: scheduleLibIdCounter++, ...s }));
 
@@ -976,6 +1035,10 @@ state.scheduleLibrary = DEFAULT_SCHEDULE_LIBRARY.map(s => ({ id: scheduleLibIdCo
   buildSetupForm();
   renderScheduleLibSetup();
   checkAutosave();
+  try {
+    const joinCode = new URLSearchParams(location.search).get('join');
+    if (joinCode) document.getElementById('inp-join-code').value = joinCode.toUpperCase();
+  } catch (e) {}
 })();
 
 function applyTheme(theme) {
@@ -1100,6 +1163,7 @@ function addLocalAdFromTracker() {
   renderLocalLibTracker();
   buildLocalAdButtons();
   doAutosave();
+  if (state.sessionCode) syncPostLibrary('local');
 }
 
 function deleteLocalAd(id) {
@@ -1107,6 +1171,7 @@ function deleteLocalAd(id) {
   renderLocalLibSetup();
   renderLocalLibTracker();
   buildLocalAdButtons();
+  if (state.sessionCode) syncPostLibrary('local');
 }
 
 function renderLocalLibSetup() {
@@ -1184,6 +1249,7 @@ function addPromoAdFromTracker() {
   renderPromoLibTracker();
   buildPromoAdButtons();
   doAutosave();
+  if (state.sessionCode) syncPostLibrary('promo');
 }
 
 function deletePromoAd(id) {
@@ -1191,6 +1257,7 @@ function deletePromoAd(id) {
   renderPromoLibSetup();
   renderPromoLibTracker();
   buildPromoAdButtons();
+  if (state.sessionCode) syncPostLibrary('promo');
 }
 
 function renderPromoLibSetup() {
@@ -1269,6 +1336,7 @@ function addScheduleAdFromTracker() {
   renderScheduleLibTracker();
   buildScheduleAdButtons();
   doAutosave();
+  if (state.sessionCode) syncPostLibrary('schedule');
 }
 
 function deleteScheduleAd(id) {
@@ -1276,6 +1344,7 @@ function deleteScheduleAd(id) {
   renderScheduleLibSetup();
   renderScheduleLibTracker();
   buildScheduleAdButtons();
+  if (state.sessionCode) syncPostLibrary('schedule');
 }
 
 function renderScheduleLibSetup() {
@@ -1527,6 +1596,10 @@ function startBroadcast(startEarly = false) {
 
   buildTrackerScreen();
   startTimer();
+
+  if (document.getElementById('toggle-multi-producer-sync').checked) {
+    syncCreateSession();
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1586,6 +1659,9 @@ function buildTrackerScreen() {
   buildCountsGrid();
   ensureScheduleCountPills();
   updateDisplay();
+
+  renderSyncStatus();
+  if (state.sessionCode) startSyncPolling();
 }
 
 function buildSxsAdButtons() {
@@ -1926,23 +2002,25 @@ function fmtHMS(sec) {
 // ═══════════════════════════════════════════════════════════
 function recordCloudAd(seconds) {
   if (!state.timerRunning || state.isPaused) return;
-  const ev = { type:'cloud', seconds, name:`Cloud ${seconds}s`, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${adEventIdCounter++}` };
+  const ev = { type:'cloud', seconds, name:`Cloud ${seconds}s`, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${state.clientId || 'x'}-${adEventIdCounter++}` };
   state.todayCloudSeconds += seconds;
   state.todayBreaks.push(ev);
   state.todayEvents.push(ev);
   state.todayCounts[`cloud_${seconds}`] = (state.todayCounts[`cloud_${seconds}`] || 0) + 1;
+  if (state.sessionCode) syncPostEvent(ev);
   refreshLog(); refreshCountsGrid(); updateDisplay();
   flashBtn(`ad-btn-${seconds}`, 'var(--accent)');
 }
 
 function recordLocalAd(spot) {
   if (!state.timerRunning || state.isPaused) return;
-  const ev = { type:'local', seconds: spot.durationSeconds, name: spot.name, spotId: spot.id, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${adEventIdCounter++}` };
+  const ev = { type:'local', seconds: spot.durationSeconds, name: spot.name, spotId: spot.id, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${state.clientId || 'x'}-${adEventIdCounter++}` };
   state.todayLocalSeconds += spot.durationSeconds;
   state.todayBreaks.push(ev);
   state.todayEvents.push(ev);
   state.todayCounts[`local_${spot.id}`] = (state.todayCounts[`local_${spot.id}`] || 0) + 1;
   state.pendingAdEventsForSheet.push(ev);
+  if (state.sessionCode) syncPostEvent(ev);
   ensureLocalCountPills();
   refreshLog(); refreshCountsGrid(); updateDisplay();
   flashBtn(`local-btn-${spot.id}`, 'var(--local)');
@@ -1950,23 +2028,25 @@ function recordLocalAd(spot) {
 
 function recordSxsAd(seconds) {
   if (!state.timerRunning || state.isPaused || !state.sxsEnabled) return;
-  const ev = { type:'sxs', seconds, name:`SxS ${seconds}s`, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${adEventIdCounter++}` };
+  const ev = { type:'sxs', seconds, name:`SxS ${seconds}s`, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${state.clientId || 'x'}-${adEventIdCounter++}` };
   state.todaySxsSeconds += seconds;
   state.todayBreaks.push(ev);
   state.todayEvents.push(ev);
   state.todayCounts[`sxs_${seconds}`] = (state.todayCounts[`sxs_${seconds}`] || 0) + 1;
+  if (state.sessionCode) syncPostEvent(ev);
   refreshLog(); refreshCountsGrid(); updateDisplay();
   flashBtn(`sxs-btn-${seconds}`, 'var(--sxs)');
 }
 
 function recordPromoAd(spot) {
   if (!state.timerRunning || state.isPaused) return;
-  const ev = { type:'promo', seconds: spot.durationSeconds, name: spot.name, spotId: spot.id, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${adEventIdCounter++}` };
+  const ev = { type:'promo', seconds: spot.durationSeconds, name: spot.name, spotId: spot.id, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${state.clientId || 'x'}-${adEventIdCounter++}` };
   state.todayPromoSeconds += spot.durationSeconds;
   state.todayBreaks.push(ev);
   state.todayEvents.push(ev);
   state.todayCounts[`promo_${spot.id}`] = (state.todayCounts[`promo_${spot.id}`] || 0) + 1;
   state.pendingAdEventsForSheet.push(ev);
+  if (state.sessionCode) syncPostEvent(ev);
   ensurePromoCountPills();
   refreshLog(); refreshCountsGrid(); updateDisplay();
   flashBtn(`promo-btn-${spot.id}`, 'var(--promo)');
@@ -1974,11 +2054,12 @@ function recordPromoAd(spot) {
 
 function recordScheduleAd(spot) {
   if (!state.timerRunning || state.isPaused) return;
-  const ev = { type:'schedule', seconds: spot.durationSeconds, name: spot.name, spotId: spot.id, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${adEventIdCounter++}` };
+  const ev = { type:'schedule', seconds: spot.durationSeconds, name: spot.name, spotId: spot.id, timestamp: new Date().toISOString(), eventId: `${state.sessionId}-${state.clientId || 'x'}-${adEventIdCounter++}` };
   state.todayBreaks.push(ev);
   state.todayEvents.push(ev);
   state.todayCounts[`schedule_${spot.id}`] = (state.todayCounts[`schedule_${spot.id}`] || 0) + 1;
   state.pendingAdEventsForSheet.push(ev);
+  if (state.sessionCode) syncPostEvent(ev);
   ensureScheduleCountPills();
   refreshLog(); refreshCountsGrid(); updateDisplay();
   flashBtn(`schedule-btn-${spot.id}`, 'var(--schedule)');
@@ -2015,6 +2096,7 @@ function undoLast() {
   if (last.eventId) {
     state.pendingAdEventsForSheet = state.pendingAdEventsForSheet.filter(ev => ev.eventId !== last.eventId);
   }
+  if (state.sessionCode && last.eventId) syncPostUndo(last.eventId);
   refreshLog(); refreshCountsGrid(); updateDisplay();
 }
 
@@ -2096,6 +2178,7 @@ function togglePause() {
     document.getElementById('pause-btn').textContent = '⏸ Pause';
     setAdButtonsEnabled(true);
     updateDisplay();
+    if (state.sessionCode) syncPostPause(false);
   }
 }
 
@@ -2106,6 +2189,7 @@ function executePause() {
   document.getElementById('pause-btn').textContent = '▶ Resume';
   setAdButtonsEnabled(false);
   updateDisplay();
+  if (state.sessionCode) syncPostPause(true);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -2115,15 +2199,31 @@ function confirmStop() { document.getElementById('modal-stop').classList.remove(
 
 function stopBroadcast() {
   closeModal('modal-stop');
+  // A deliberate Stop is a single shared shutdown signal in a multi-producer session — the
+  // other browser picks this up on its next poll and freezes too (see pollTick()), instead of
+  // continuing to track unaware. Fire this before the local teardown below so it goes out
+  // even if something local throws.
+  if (state.sessionCode) syncPostStop('stop');
+  freezeBroadcastLocally({ downloadReport: true, sendFinalToSheet: true });
+}
+
+// Shared by both a deliberate local Stop and acknowledging a remote one — freezes the timer
+// and intervals, optionally downloads the local report, optionally sends the Sheets 'final'
+// row. Never touches which screen is showing (matches existing Stop behavior: the tracker
+// screen stays up, frozen, while the report opens separately).
+function freezeBroadcastLocally(opts) {
   state.timerRunning = false;
   clearInterval(timerInterval);
   clearInterval(autosaveInterval);
   clearInterval(heartbeatInterval);
+  stopSyncPolling();
 
   const elapsed = state.currentElapsedSeconds;
-  exportJSON(elapsed);
-  generateReport(elapsed);
-  postBroadcastEvent(elapsed, 'final');
+  if (opts.downloadReport) {
+    exportJSON(elapsed);
+    generateReport(elapsed);
+  }
+  if (opts.sendFinalToSheet) postBroadcastEvent(elapsed, 'final');
   clearAutosave();
 }
 
@@ -2181,23 +2281,31 @@ function buildReportSummary(elapsed) {
 }
 
 function postBroadcastEvent(elapsed, eventType) {
-  if (!SHEETS_WEBHOOK_URL || !state.sessionId) return;
-  try {
-    const payload = buildReportSummary(elapsed);
-    payload.event_type = eventType;
-    payload.session_id = state.sessionId;
-    const body = JSON.stringify(payload);
-    if (eventType === 'unload' && navigator.sendBeacon) {
-      // sendBeacon is built to survive page teardown; a normal fetch() is frequently
-      // cancelled by the browser mid-flight when the tab is closing.
-      navigator.sendBeacon(SHEETS_WEBHOOK_URL, new Blob([body], { type: 'text/plain;charset=utf-8' }));
-    } else {
-      fetch(SHEETS_WEBHOOK_URL, { method: 'POST', mode: 'no-cors', body }).catch(() => {});
-    }
-  } catch (e) {}
+  // In a shared multi-producer session, 'heartbeat'/'unload' are recurring/passive signals —
+  // only the current heartbeat owner sends the Broadcasts-tab row, so two producers on the
+  // same broadcast don't double it up. 'final'/'reset' are one-time deliberate acts (Stop is
+  // now a single shared action — see stopBroadcast()) and always send regardless of ownership.
+  const isRecurring = eventType === 'heartbeat' || eventType === 'unload';
+  const skipBroadcastRow = state.sessionCode && !state.isHeartbeatOwner && isRecurring;
+  if (SHEETS_WEBHOOK_URL && state.sessionId && !skipBroadcastRow) {
+    try {
+      const payload = buildReportSummary(elapsed);
+      payload.event_type = eventType;
+      payload.session_id = state.sessionId;
+      const body = JSON.stringify(payload);
+      if (eventType === 'unload' && navigator.sendBeacon) {
+        // sendBeacon is built to survive page teardown; a normal fetch() is frequently
+        // cancelled by the browser mid-flight when the tab is closing.
+        navigator.sendBeacon(SHEETS_WEBHOOK_URL, new Blob([body], { type: 'text/plain;charset=utf-8' }));
+      } else {
+        fetch(SHEETS_WEBHOOK_URL, { method: 'POST', mode: 'no-cors', body }).catch(() => {});
+      }
+    } catch (e) {}
+  }
   // Piggyback the per-event (Direct Sold/Promo/Schedule) batch on the same cadence — no
-  // separate POST-per-click.
-  postAdEventsBatch(eventType);
+  // separate POST-per-click. Always runs: each browser only ever queues its own originated
+  // breaks (see mergeRemoteEvents()), so there's no cross-producer duplication risk here.
+  if (SHEETS_WEBHOOK_URL && state.sessionId) postAdEventsBatch(eventType);
 }
 
 // Direct Sold/Promo/Schedule ad breaks, batched — for cross-referencing exact run timestamps
@@ -2600,12 +2708,16 @@ function confirmReset() { document.getElementById('modal-reset').classList.remov
 
 function resetToSetup() {
   closeModal('modal-reset');
+  // Like Stop, Reset is a shared shutdown signal in a multi-producer session — see stopBroadcast().
+  if (state.sessionCode) syncPostStop('reset');
   if (state.timerRunning) postBroadcastEvent(getElapsedSeconds(), 'reset');
   clearInterval(timerInterval); clearInterval(autosaveInterval); clearInterval(heartbeatInterval);
+  stopSyncPolling();
   clearAutosave();
   state.timerRunning = false; state.isPaused = false;
   state.todayCloudSeconds = 0; state.todayLocalSeconds = 0; state.todaySxsSeconds = 0; state.todayPromoSeconds = 0;
   state.todayBreaks = []; state.todayEvents = []; state.todayCounts = {}; state.pendingAdEventsForSheet = [];
+  state.sessionCode = null; state.clientId = null; state.isHeartbeatOwner = true;
   document.getElementById('tracker-layout').classList.add('hidden');
   document.getElementById('setup-screen').classList.remove('hidden');
   renderLocalLibSetup();
@@ -2653,6 +2765,324 @@ function recoverSession() {
 }
 
 function dismissRecovery() { clearAutosave(); document.getElementById('recovery-banner').classList.add('hidden'); }
+
+// ═══════════════════════════════════════════════════════════
+//  MULTI-PRODUCER LIVE SYNC (opt-in — checkbox on the setup screen)
+//
+// Two producers can track the same broadcast at once (e.g. one on Cloud, one on Direct
+// Sold) via a small in-memory session on the server (see app.py) that both browsers poll.
+// Nothing here runs unless state.sessionCode is set, so a normal solo broadcast is
+// completely unaffected. See HANDOFF.md for the full design/tradeoffs.
+// ═══════════════════════════════════════════════════════════
+const SYNC_POLL_MS = 4000;
+
+function newClientId() { return Math.random().toString(36).slice(2, 10); }
+
+function buildSyncConfigSnapshot() {
+  return {
+    sessionId: state.sessionId,
+    startTimeMs: state.startTimeMs,
+    startDisplayMs: state.startDisplayMs,
+    timezone: state.timezone,
+    goal: state.goal,
+    eventName: state.eventName,
+    eventDay: state.eventDay,
+    vertical: state.vertical,
+    leadProducer: state.leadProducer,
+    assistantDirector: state.assistantDirector,
+    sxsEnabled: state.sxsEnabled,
+    sxsGoal: state.sxsGoal,
+    broadcastMode: state.broadcastMode,
+  };
+}
+
+function buildSyncLibrariesSnapshot() {
+  return { local: state.localLibrary, promo: state.promoLibrary, schedule: state.scheduleLibrary };
+}
+
+async function syncCreateSession() {
+  state.clientId = newClientId();
+  try {
+    const res = await fetch('/api/sessions', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ clientId: state.clientId, config: buildSyncConfigSnapshot(), libraries: buildSyncLibrariesSnapshot() }),
+    }).then(r => (r.ok ? r.json() : Promise.reject(r)));
+    state.sessionCode = res.code;
+    state.isHeartbeatOwner = true;
+    doAutosave();
+    renderSyncStatus();
+    startSyncPolling();
+  } catch (e) {
+    state.clientId = null;
+    alert('Could not start multi-producer sync (server unreachable) — continuing solo for this broadcast.');
+  }
+}
+
+async function joinBroadcast() {
+  const codeInput = document.getElementById('inp-join-code');
+  const code = (codeInput.value || '').trim().toUpperCase();
+  if (!code) { alert('Enter the session code the other producer shared with you.'); return; }
+  const clientId = newClientId();
+  let data;
+  try {
+    data = await fetch(`/api/sessions/${encodeURIComponent(code)}?clientId=${encodeURIComponent(clientId)}`)
+      .then(r => (r.ok ? r.json() : Promise.reject(r)));
+  } catch (e) {
+    alert('Could not find that broadcast. Double-check the code and try again.');
+    return;
+  }
+  if (data.stopped) { alert('That broadcast has already ended.'); return; }
+
+  const cfg = data.config || {};
+  state.clientId = clientId;
+  state.sessionCode = code;
+  state.sessionId = cfg.sessionId || null;
+  state.startTimeMs = cfg.startTimeMs;
+  state.startDisplayMs = cfg.startDisplayMs;
+  state.timezone = cfg.timezone || 'America/New_York';
+  state.goal = cfg.goal != null ? cfg.goal : 7.0;
+  state.eventName = cfg.eventName || '';
+  state.eventDay = cfg.eventDay || '';
+  state.vertical = cfg.vertical || '';
+  state.leadProducer = cfg.leadProducer || '';
+  state.assistantDirector = cfg.assistantDirector || '';
+  state.sxsEnabled = !!cfg.sxsEnabled;
+  state.sxsGoal = cfg.sxsGoal != null ? cfg.sxsGoal : 2.5;
+  state.broadcastMode = cfg.broadcastMode || null;
+
+  const libs = data.libraries || { local: [], promo: [], schedule: [] };
+  state.localLibrary = libs.local || [];
+  state.promoLibrary = libs.promo || [];
+  state.scheduleLibrary = libs.schedule || [];
+  if (state.localLibrary.length) localLibIdCounter = Math.max(localLibIdCounter, ...state.localLibrary.map(s => s.id), 0) + 1;
+  if (state.promoLibrary.length) promoLibIdCounter = Math.max(promoLibIdCounter, ...state.promoLibrary.map(s => s.id), 0) + 1;
+  if (state.scheduleLibrary.length) scheduleLibIdCounter = Math.max(scheduleLibIdCounter, ...state.scheduleLibrary.map(s => s.id), 0) + 1;
+
+  state.todayCloudSeconds = 0; state.todayLocalSeconds = 0; state.todaySxsSeconds = 0; state.todayPromoSeconds = 0;
+  state.todayBreaks = []; state.todayEvents = []; state.todayCounts = {}; state.pendingAdEventsForSheet = [];
+  state.timerRunning = true;
+  state.isPaused = !!data.paused;
+  state.pauseStartedAt = state.isPaused ? Date.now() : null;
+  state.totalPausedMs = 0;
+  state.currentElapsedSeconds = 0;
+  state.isHeartbeatOwner = !!data.isHeartbeatOwner;
+  syncPollCursor = 0;
+  remoteStopHandled = false;
+
+  buildTrackerScreen();
+  startTimer();
+  if (state.isPaused) setAdButtonsEnabled(false);
+  mergeRemoteEvents(data.events || []);
+  syncPollCursor = data.maxSeq || 0;
+}
+
+function syncPostEvent(ev) {
+  fetch(`/api/sessions/${state.sessionCode}/events`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId: state.clientId, id: ev.eventId, type: ev.type, seconds: ev.seconds, name: ev.name, spotId: ev.spotId, timestamp: ev.timestamp }),
+  }).catch(() => {});
+}
+
+function syncPostUndo(eventId) {
+  fetch(`/api/sessions/${state.sessionCode}/undo`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId: state.clientId, id: eventId }),
+  }).catch(() => {});
+}
+
+function syncPostPause(paused) {
+  fetch(`/api/sessions/${state.sessionCode}/pause`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId: state.clientId, paused }),
+  }).catch(() => {});
+}
+
+function syncPostLibrary(type) {
+  // Briefly ignore incoming poll library snapshots — otherwise a poll already in flight when
+  // this edit was made could land afterward with pre-edit data and stomp it right back out.
+  libraryLocalLockUntil = Date.now() + 6000;
+  const items = type === 'local' ? state.localLibrary : type === 'promo' ? state.promoLibrary : state.scheduleLibrary;
+  fetch(`/api/sessions/${state.sessionCode}/library`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ clientId: state.clientId, type, items }),
+  }).catch(() => {});
+}
+
+function syncPostStop(kind) {
+  // sendBeacon survives a Stop that immediately closes the tab; fetch covers the normal case
+  // (the tracker screen stays open after Stop — see freezeBroadcastLocally()).
+  const body = JSON.stringify({ clientId: state.clientId, kind });
+  if (navigator.sendBeacon) {
+    navigator.sendBeacon(`/api/sessions/${state.sessionCode}/stop`, new Blob([body], { type: 'application/json' }));
+  } else {
+    fetch(`/api/sessions/${state.sessionCode}/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }).catch(() => {});
+  }
+}
+
+function startSyncPolling() {
+  stopSyncPolling();
+  syncPollInterval = setInterval(pollTick, SYNC_POLL_MS);
+}
+
+function stopSyncPolling() {
+  if (syncPollInterval) clearInterval(syncPollInterval);
+  syncPollInterval = null;
+}
+
+async function pollTick() {
+  if (!state.sessionCode) return;
+  let data;
+  try {
+    data = await fetch(`/api/sessions/${state.sessionCode}/poll?since=${syncPollCursor}&clientId=${encodeURIComponent(state.clientId)}`)
+      .then(r => (r.ok ? r.json() : Promise.reject(r)));
+  } catch (e) {
+    return; // transient network hiccup — try again next tick
+  }
+
+  state.isHeartbeatOwner = !!data.isHeartbeatOwner;
+  syncPollCursor = data.maxSeq || syncPollCursor;
+
+  if (data.libraries && Date.now() > libraryLocalLockUntil) {
+    state.localLibrary = data.libraries.local || [];
+    state.promoLibrary = data.libraries.promo || [];
+    state.scheduleLibrary = data.libraries.schedule || [];
+    if (state.localLibrary.length) localLibIdCounter = Math.max(localLibIdCounter, ...state.localLibrary.map(s => s.id), 0) + 1;
+    if (state.promoLibrary.length) promoLibIdCounter = Math.max(promoLibIdCounter, ...state.promoLibrary.map(s => s.id), 0) + 1;
+    if (state.scheduleLibrary.length) scheduleLibIdCounter = Math.max(scheduleLibIdCounter, ...state.scheduleLibrary.map(s => s.id), 0) + 1;
+    buildLocalAdButtons(); renderLocalLibTracker();
+    buildPromoAdButtons(); renderPromoLibTracker();
+    buildScheduleAdButtons(); renderScheduleLibTracker();
+  }
+
+  if (data.removedIds && data.removedIds.length) applyRemoteRemovals(data.removedIds);
+  if (data.events && data.events.length) mergeRemoteEvents(data.events);
+
+  if (typeof data.paused === 'boolean' && data.paused !== state.isPaused) {
+    state.isPaused = data.paused;
+    if (state.isPaused) {
+      state.pauseStartedAt = Date.now();
+      document.getElementById('pause-btn').textContent = '▶ Resume';
+      setAdButtonsEnabled(false);
+    } else {
+      if (state.pauseStartedAt) state.totalPausedMs += Date.now() - state.pauseStartedAt;
+      state.pauseStartedAt = null;
+      document.getElementById('pause-btn').textContent = '⏸ Pause';
+      setAdButtonsEnabled(true);
+    }
+    updateDisplay();
+  }
+
+  if (data.stopped && !remoteStopHandled) {
+    remoteStopHandled = true;
+    showRemoteStopNotice(data.stopKind || 'stop');
+  }
+}
+
+// Reuses eventId as the merge key (client-generated, globally unique — see recordCloudAd()
+// etc.) so an event this browser already has locally (its own click, echoed back by the
+// server) is never duplicated.
+function mergeRemoteEvents(events) {
+  const existingIds = new Set(state.todayEvents.map(e => e.eventId));
+  let added = false;
+  events.forEach(e => {
+    if (existingIds.has(e.id)) return;
+    const ev = { type: e.type, seconds: e.seconds, name: e.name, spotId: e.spotId, timestamp: e.timestamp, eventId: e.id };
+    state.todayBreaks.push(ev);
+    state.todayEvents.push(ev);
+    added = true;
+  });
+  if (!added) return;
+  // Keep chronological order regardless of arrival order, so Undo Last (which pops the
+  // array's last element) always targets the actually-most-recent break.
+  state.todayBreaks.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  state.todayEvents.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  recalcTotalsFromBreaks();
+  refreshLog(); refreshCountsGrid(); updateDisplay();
+}
+
+function applyRemoteRemovals(ids) {
+  const idSet = new Set(ids);
+  const before = state.todayBreaks.length;
+  state.todayBreaks = state.todayBreaks.filter(e => !idSet.has(e.eventId));
+  state.todayEvents = state.todayEvents.filter(e => !idSet.has(e.eventId));
+  state.pendingAdEventsForSheet = state.pendingAdEventsForSheet.filter(e => !idSet.has(e.eventId));
+  if (state.todayBreaks.length === before) return;
+  recalcTotalsFromBreaks();
+  refreshLog(); refreshCountsGrid(); updateDisplay();
+}
+
+// Recomputes today's per-category totals/counts from state.todayBreaks — used after a remote
+// merge/removal instead of incremental +/- math, so the two producers' totals can never drift
+// apart from rounding or ordering differences.
+function recalcTotalsFromBreaks() {
+  state.todayCloudSeconds = 0; state.todayLocalSeconds = 0; state.todaySxsSeconds = 0; state.todayPromoSeconds = 0;
+  state.todayCounts = {};
+  state.todayBreaks.forEach(ev => {
+    switch (ev.type) {
+      case 'cloud':
+        state.todayCloudSeconds += ev.seconds;
+        state.todayCounts[`cloud_${ev.seconds}`] = (state.todayCounts[`cloud_${ev.seconds}`] || 0) + 1;
+        break;
+      case 'sxs':
+        state.todaySxsSeconds += ev.seconds;
+        state.todayCounts[`sxs_${ev.seconds}`] = (state.todayCounts[`sxs_${ev.seconds}`] || 0) + 1;
+        break;
+      case 'promo':
+        state.todayPromoSeconds += ev.seconds;
+        state.todayCounts[`promo_${ev.spotId}`] = (state.todayCounts[`promo_${ev.spotId}`] || 0) + 1;
+        break;
+      case 'schedule':
+        state.todayCounts[`schedule_${ev.spotId}`] = (state.todayCounts[`schedule_${ev.spotId}`] || 0) + 1;
+        break;
+      default: // 'local'
+        state.todayLocalSeconds += ev.seconds;
+        state.todayCounts[`local_${ev.spotId}`] = (state.todayCounts[`local_${ev.spotId}`] || 0) + 1;
+    }
+  });
+}
+
+function renderSyncStatus() {
+  const el = document.getElementById('sync-status');
+  if (!el) return;
+  if (!state.sessionCode) { el.classList.add('hidden'); return; }
+  el.classList.remove('hidden');
+  document.getElementById('sync-code-value').textContent = state.sessionCode;
+}
+
+function copyJoinLink() {
+  const url = `${location.origin}${location.pathname}?join=${encodeURIComponent(state.sessionCode)}`;
+  const btn = document.getElementById('sync-copy-btn');
+  const flash = () => { if (!btn) return; const old = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => { btn.textContent = old; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(url).then(flash).catch(() => prompt('Copy this link:', url));
+  } else {
+    prompt('Copy this link:', url);
+  }
+}
+
+function showRemoteStopNotice(kind) {
+  clearInterval(timerInterval); clearInterval(autosaveInterval); clearInterval(heartbeatInterval);
+  stopSyncPolling();
+  state.timerRunning = false;
+  const title = document.getElementById('remote-stop-title');
+  const body = document.getElementById('remote-stop-body');
+  const downloadBtn = document.getElementById('remote-stop-download-btn');
+  if (kind === 'reset') {
+    title.textContent = 'Broadcast reset by another user';
+    body.textContent = 'The other producer reset this broadcast, so it has ended here too.';
+    downloadBtn.classList.add('hidden');
+  } else {
+    title.textContent = 'Broadcast stopped by another user';
+    body.textContent = 'Download event report?';
+    downloadBtn.classList.remove('hidden');
+  }
+  document.getElementById('modal-remote-stop').classList.remove('hidden');
+}
+
+function acknowledgeRemoteStop(download) {
+  document.getElementById('modal-remote-stop').classList.add('hidden');
+  freezeBroadcastLocally({ downloadReport: download, sendFinalToSheet: false });
+}
 
 // ═══════════════════════════════════════════════════════════
 //  HELPERS
