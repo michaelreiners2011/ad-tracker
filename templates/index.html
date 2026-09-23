@@ -533,10 +533,16 @@
     </p>
     <p style="font-size:0.83rem;color:var(--text-muted);margin-bottom:14px;">
       Pre-load your direct sold spots here. They'll appear as buttons on the tracker alongside cloud ads.
-      The library saves in your JSON export for multi-day events.
+      New spots are saved to a shared library so future broadcasts can pick them from the dropdown below.
     </p>
     <div id="local-lib-list"><div class="lib-empty">No direct sold ads added yet.</div></div>
     <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group">
+        <label>Select Existing</label>
+        <select id="sel-local-pick" onchange="pickFromLibrary('local', this, 'setup')" style="width:180px;">
+          <option value="">— Select existing —</option>
+        </select>
+      </div>
       <div class="form-group">
         <label>Spot Name</label>
         <input type="text" id="inp-local-name" placeholder="e.g. Toyota 30s" style="width:160px;" />
@@ -559,6 +565,12 @@
     <div id="promo-lib-list"><div class="lib-empty">No promos added yet.</div></div>
     <div class="form-row" style="align-items:flex-end;">
       <div class="form-group">
+        <label>Select Existing</label>
+        <select id="sel-promo-pick" onchange="pickFromLibrary('promo', this, 'setup')" style="width:180px;">
+          <option value="">— Select existing —</option>
+        </select>
+      </div>
+      <div class="form-group">
         <label>Promo Name</label>
         <input type="text" id="inp-promo-name" placeholder="e.g. Fan Fest Promo" style="width:160px;" />
       </div>
@@ -574,12 +586,18 @@
   <div class="card" id="schedule-lib-card">
     <div class="card-title">Upcoming Schedule</div>
     <p style="font-size:0.83rem;color:var(--text-muted);margin-bottom:14px;">
-      Series schedule graphics. The default list below is maintained in the app — add a one-off
-      extra for just this broadcast if needed (it won't be remembered afterward). Not counted
-      toward any ad-minute goal.
+      Series schedule graphics. The default list below is maintained in the app. A one-off extra
+      added here is saved to a shared library too, so it'll be available to pick next time. Not
+      counted toward any ad-minute goal.
     </p>
     <div id="schedule-lib-list"></div>
     <div class="form-row" style="align-items:flex-end;">
+      <div class="form-group">
+        <label>Select Existing</label>
+        <select id="sel-schedule-pick" onchange="pickFromLibrary('schedule', this, 'setup')" style="width:180px;">
+          <option value="">— Select existing —</option>
+        </select>
+      </div>
       <div class="form-group">
         <label>Series Name</label>
         <input type="text" id="inp-schedule-name" placeholder="e.g. Hoops Championship Schedule" style="width:200px;" />
@@ -753,6 +771,12 @@
       <div id="local-lib-tracker-list" style="margin:12px 0;"></div>
       <div class="form-row" style="align-items:flex-end;">
         <div class="form-group">
+          <label>Select Existing</label>
+          <select id="sel-local-pick-trk" onchange="pickFromLibrary('local', this, 'tracker')" style="width:150px;">
+            <option value="">— Select existing —</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Spot Name</label>
           <input type="text" id="inp-local-name-trk" placeholder="e.g. Ford 60s" style="width:150px;" />
         </div>
@@ -778,6 +802,12 @@
       <div id="promo-lib-tracker-list" style="margin:12px 0;"></div>
       <div class="form-row" style="align-items:flex-end;">
         <div class="form-group">
+          <label>Select Existing</label>
+          <select id="sel-promo-pick-trk" onchange="pickFromLibrary('promo', this, 'tracker')" style="width:150px;">
+            <option value="">— Select existing —</option>
+          </select>
+        </div>
+        <div class="form-group">
           <label>Promo Name</label>
           <input type="text" id="inp-promo-name-trk" placeholder="e.g. Fan Fest Promo" style="width:150px;" />
         </div>
@@ -800,6 +830,12 @@
       <summary class="lib-manage-summary">Manage Library <span id="schedule-lib-count" class="lib-manage-count"></span></summary>
       <div id="schedule-lib-tracker-list" style="margin:12px 0;"></div>
       <div class="form-row" style="align-items:flex-end;">
+        <div class="form-group">
+          <label>Select Existing</label>
+          <select id="sel-schedule-pick-trk" onchange="pickFromLibrary('schedule', this, 'tracker')" style="width:150px;">
+            <option value="">— Select existing —</option>
+          </select>
+        </div>
         <div class="form-group">
           <label>Series Name</label>
           <input type="text" id="inp-schedule-name-trk" placeholder="e.g. Hoops Schedule" style="width:150px;" />
@@ -1023,6 +1059,12 @@ let remoteStopHandled = false;
 // clobbering that edit with a stale snapshot — see syncPostLibrary()/pollTick().
 let libraryLocalLockUntil = 0;
 
+// Persistent, shared catalog of Direct Sold/Promo/Schedule name+duration entries producers
+// have used before — fetched once at load from the "Ad Library" Sheet tab (see Code.gs) and
+// grown automatically as new spots are added. Distinct from state.localLibrary/etc., which is
+// just THIS broadcast's active button list. See fetchMasterLibrary()/maybeAddToMasterCatalog().
+let masterLibrary = { local: [], promo: [], schedule: [] };
+
 state.scheduleLibrary = DEFAULT_SCHEDULE_LIBRARY.map(s => ({ id: scheduleLibIdCounter++, ...s }));
 
 // ═══════════════════════════════════════════════════════════
@@ -1035,6 +1077,7 @@ state.scheduleLibrary = DEFAULT_SCHEDULE_LIBRARY.map(s => ({ id: scheduleLibIdCo
   buildSetupForm();
   renderScheduleLibSetup();
   checkAutosave();
+  fetchMasterLibrary();
   try {
     const joinCode = new URLSearchParams(location.search).get('join');
     if (joinCode) document.getElementById('inp-join-code').value = joinCode.toUpperCase();
@@ -1147,6 +1190,7 @@ function addLocalAd() {
   if (!name) { alert('Please enter a spot name.'); return; }
   if (!dur || dur < 1) { alert('Please enter a valid duration in seconds.'); return; }
   state.localLibrary.push({ id: localLibIdCounter++, name, durationSeconds: dur });
+  maybeAddToMasterCatalog('local', name, dur);
   document.getElementById('inp-local-name').value = '';
   document.getElementById('inp-local-dur').value = '';
   renderLocalLibSetup();
@@ -1158,6 +1202,7 @@ function addLocalAdFromTracker() {
   if (!name) { alert('Please enter a spot name.'); return; }
   if (!dur || dur < 1) { alert('Please enter a valid duration in seconds.'); return; }
   state.localLibrary.push({ id: localLibIdCounter++, name, durationSeconds: dur });
+  maybeAddToMasterCatalog('local', name, dur);
   document.getElementById('inp-local-name-trk').value = '';
   document.getElementById('inp-local-dur-trk').value = '';
   renderLocalLibTracker();
@@ -1233,6 +1278,7 @@ function addPromoAd() {
   if (!name) { alert('Please enter a spot name.'); return; }
   if (!dur || dur < 1) { alert('Please enter a valid duration in seconds.'); return; }
   state.promoLibrary.push({ id: promoLibIdCounter++, name, durationSeconds: dur });
+  maybeAddToMasterCatalog('promo', name, dur);
   document.getElementById('inp-promo-name').value = '';
   document.getElementById('inp-promo-dur').value = '';
   renderPromoLibSetup();
@@ -1244,6 +1290,7 @@ function addPromoAdFromTracker() {
   if (!name) { alert('Please enter a spot name.'); return; }
   if (!dur || dur < 1) { alert('Please enter a valid duration in seconds.'); return; }
   state.promoLibrary.push({ id: promoLibIdCounter++, name, durationSeconds: dur });
+  maybeAddToMasterCatalog('promo', name, dur);
   document.getElementById('inp-promo-name-trk').value = '';
   document.getElementById('inp-promo-dur-trk').value = '';
   renderPromoLibTracker();
@@ -1320,6 +1367,7 @@ function addScheduleAd() {
   if (!name) { alert('Please enter a series name.'); return; }
   if (!dur || dur < 1) { alert('Please enter a valid duration in seconds.'); return; }
   state.scheduleLibrary.push({ id: scheduleLibIdCounter++, name, durationSeconds: dur });
+  maybeAddToMasterCatalog('schedule', name, dur);
   document.getElementById('inp-schedule-name').value = '';
   document.getElementById('inp-schedule-dur').value = '';
   renderScheduleLibSetup();
@@ -1331,6 +1379,7 @@ function addScheduleAdFromTracker() {
   if (!name) { alert('Please enter a series name.'); return; }
   if (!dur || dur < 1) { alert('Please enter a valid duration in seconds.'); return; }
   state.scheduleLibrary.push({ id: scheduleLibIdCounter++, name, durationSeconds: dur });
+  maybeAddToMasterCatalog('schedule', name, dur);
   document.getElementById('inp-schedule-name-trk').value = '';
   document.getElementById('inp-schedule-dur-trk').value = '';
   renderScheduleLibTracker();
@@ -3082,6 +3131,88 @@ function showRemoteStopNotice(kind) {
 function acknowledgeRemoteStop(download) {
   document.getElementById('modal-remote-stop').classList.add('hidden');
   freezeBroadcastLocally({ downloadReport: download, sendFinalToSheet: false });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  MASTER AD/PROMO/SCHEDULE LIBRARY (persistent, shared — "Ad Library" Sheet tab)
+//
+// Distinct from state.localLibrary/promoLibrary/scheduleLibrary, which is just this one
+// broadcast's active button list. This is the standing catalog of name+duration entries
+// producers have used before, so future broadcasts can pick from a dropdown instead of
+// retyping. Read via a GET to the same Apps Script webhook used for logging; written via the
+// same POST endpoint with payload_type 'library_add'. Degrades gracefully to "just type it"
+// if the fetch fails (offline, or an older Code.gs without the doGet handler deployed yet).
+// ═══════════════════════════════════════════════════════════
+async function fetchMasterLibrary() {
+  // Goes through our own /api/library (see app.py), not SHEETS_WEBHOOK_URL directly — a
+  // browser fetch straight to the Apps Script /exec URL is blocked by CORS.
+  try {
+    const res = await fetch('/api/library');
+    if (!res.ok) return;
+    const data = await res.json();
+    masterLibrary.local = data.local || [];
+    masterLibrary.promo = data.promo || [];
+    masterLibrary.schedule = data.schedule || [];
+    renderAllLibraryPickers();
+  } catch (e) {
+    // Master catalog unavailable — dropdowns just stay empty; typing a name still works.
+  }
+}
+
+function renderLibraryPicker(type) {
+  const entries = masterLibrary[type] || [];
+  ['', '-trk'].forEach(suffix => {
+    const sel = document.getElementById(`sel-${type}-pick${suffix}`);
+    if (!sel) return;
+    const current = sel.value;
+    sel.innerHTML = '<option value="">— Select existing —</option>' +
+      entries.map(e => `<option value="${e.id}">${escHtml(e.name)} (${e.durationSeconds}s)</option>`).join('');
+    sel.value = entries.some(e => e.id === current) ? current : '';
+  });
+}
+
+function renderAllLibraryPickers() {
+  ['local', 'promo', 'schedule'].forEach(renderLibraryPicker);
+}
+
+// Fills the matching name/duration fields from the picked catalog entry and runs it through
+// the normal add flow (context 'setup' or 'tracker') — reuses that flow's validation,
+// rendering, autosave, and multi-producer sync untouched.
+function pickFromLibrary(type, selectEl, context) {
+  const id = selectEl.value;
+  selectEl.value = '';
+  if (!id) return;
+  const entry = (masterLibrary[type] || []).find(e => e.id === id);
+  if (!entry) return;
+  const activeLibrary = { local: state.localLibrary, promo: state.promoLibrary, schedule: state.scheduleLibrary }[type];
+  const alreadyActive = activeLibrary.some(s => s.name.trim().toLowerCase() === entry.name.trim().toLowerCase() && s.durationSeconds === entry.durationSeconds);
+  if (alreadyActive) return; // already a button in this broadcast's library — nothing to do
+  const suffix = context === 'tracker' ? '-trk' : '';
+  document.getElementById(`inp-${type}-name${suffix}`).value = entry.name;
+  document.getElementById(`inp-${type}-dur${suffix}`).value = entry.durationSeconds;
+  const addFns = {
+    local: context === 'tracker' ? addLocalAdFromTracker : addLocalAd,
+    promo: context === 'tracker' ? addPromoAdFromTracker : addPromoAd,
+    schedule: context === 'tracker' ? addScheduleAdFromTracker : addScheduleAd,
+  };
+  addFns[type]();
+}
+
+// Called at the end of each addXAd()/addXAdFromTracker() — adds a new catalog entry only if
+// this exact name+duration isn't already in it (so picking from the dropdown, which reuses
+// the same add functions, never creates a duplicate catalog row).
+function maybeAddToMasterCatalog(type, name, durationSeconds) {
+  const list = masterLibrary[type] || (masterLibrary[type] = []);
+  const exists = list.some(e => e.name.trim().toLowerCase() === name.trim().toLowerCase() && e.durationSeconds === durationSeconds);
+  if (exists) return;
+  const entry = { id: newClientId(), name, durationSeconds };
+  list.push(entry);
+  renderLibraryPicker(type);
+  if (!SHEETS_WEBHOOK_URL) return;
+  try {
+    const body = JSON.stringify({ payload_type: 'library_add', id: entry.id, category: type, name, duration_seconds: durationSeconds });
+    fetch(SHEETS_WEBHOOK_URL, { method: 'POST', mode: 'no-cors', body }).catch(() => {});
+  } catch (e) {}
 }
 
 // ═══════════════════════════════════════════════════════════

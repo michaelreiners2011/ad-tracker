@@ -74,6 +74,28 @@ var AD_EVENTS_COLUMNS = [
   ['Submitted At (Epoch ms)', function (d) { return Date.now(); }],
 ];
 
+// Third tab: the persistent, shared master catalog of Direct Sold / Promo / Upcoming Schedule
+// name+duration entries producers can pick from (instead of retyping) when building a
+// broadcast's library — read via doGet, written via doPost payload_type 'library_add' /
+// 'library_remove'. One row per entry; Entry ID is client-generated (see the app's
+// newClientId()-style helper) so a removal can target a specific row precisely.
+var LIBRARY_SHEET_NAME = 'Ad Library';
+var LIBRARY_COLUMNS = [
+  ['Entry ID', 'id'],
+  ['Category', 'category'], // 'local' (Direct Sold) | 'promo' | 'schedule'
+  ['Name', 'name'],
+  ['Duration Seconds', 'duration_seconds'],
+  ['Added At (UTC)', function (d) { return new Date().toISOString(); }],
+];
+
+function doGet(e) {
+  var action = e && e.parameter ? e.parameter.action : '';
+  if (action === 'library') {
+    return jsonResponse_(readLibrary_());
+  }
+  return jsonResponse_({ ok: true });
+}
+
 function doPost(e) {
   var lock = LockService.getScriptLock();
   lock.waitLock(10000);
@@ -81,6 +103,12 @@ function doPost(e) {
     var data = JSON.parse(e.postData.contents);
     if (data.payload_type === 'ad_events') {
       return handleAdEventsBatch_(data);
+    }
+    if (data.payload_type === 'library_add') {
+      return handleLibraryAdd_(data);
+    }
+    if (data.payload_type === 'library_remove') {
+      return handleLibraryRemove_(data);
     }
     var sheet = getOrCreateSheet_(SHEET_NAME, COLUMNS);
     var row = COLUMNS.map(function (c) {
@@ -115,6 +143,50 @@ function handleAdEventsBatch_(data) {
     sheet.appendRow(row);
   });
   return jsonResponse_({ ok: true, rows: events.length });
+}
+
+function handleLibraryAdd_(data) {
+  if (!data.id || !data.category || !data.name) {
+    return jsonResponse_({ ok: false, error: 'id, category, and name are required' });
+  }
+  var sheet = getOrCreateSheet_(LIBRARY_SHEET_NAME, LIBRARY_COLUMNS);
+  var row = LIBRARY_COLUMNS.map(function (c) {
+    var accessor = c[1];
+    var v = typeof accessor === 'function' ? accessor(data) : data[accessor];
+    return v === undefined || v === null ? '' : v;
+  });
+  sheet.appendRow(row);
+  return jsonResponse_({ ok: true });
+}
+
+function handleLibraryRemove_(data) {
+  if (!data.id) return jsonResponse_({ ok: false, error: 'id is required' });
+  var sheet = getOrCreateSheet_(LIBRARY_SHEET_NAME, LIBRARY_COLUMNS);
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return jsonResponse_({ ok: true, removed: false });
+  var idCol = 1; // 'Entry ID' is the first LIBRARY_COLUMNS entry
+  var ids = sheet.getRange(2, idCol, lastRow - 1, 1).getValues();
+  for (var i = 0; i < ids.length; i++) {
+    if (String(ids[i][0]) === String(data.id)) {
+      sheet.deleteRow(i + 2); // +2: 1-indexed, plus the header row
+      return jsonResponse_({ ok: true, removed: true });
+    }
+  }
+  return jsonResponse_({ ok: true, removed: false });
+}
+
+/** Reads the whole Ad Library tab and groups entries by category for doGet(). */
+function readLibrary_() {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(LIBRARY_SHEET_NAME);
+  var result = { local: [], promo: [], schedule: [] };
+  if (!sheet || sheet.getLastRow() < 2) return result;
+  var rows = sheet.getRange(2, 1, sheet.getLastRow() - 1, LIBRARY_COLUMNS.length).getValues();
+  rows.forEach(function (r) {
+    var id = r[0], category = r[1], name = r[2], durationSeconds = r[3];
+    if (!id || !category || !name || !result.hasOwnProperty(category)) return;
+    result[category].push({ id: String(id), name: String(name), durationSeconds: Number(durationSeconds) || 0 });
+  });
+  return result;
 }
 
 function getOrCreateSheet_(sheetName, columns) {
@@ -174,8 +246,9 @@ function epochMsFromData_(data) {
   return isNaN(t) ? '' : t;
 }
 
-/** Optional: run manually once (select this function, then Run) to sanity-check both sheets/headers exist. */
+/** Optional: run manually once (select this function, then Run) to sanity-check all sheets/headers exist. */
 function setup() {
   getOrCreateSheet_(SHEET_NAME, COLUMNS);
   getOrCreateSheet_(AD_EVENTS_SHEET_NAME, AD_EVENTS_COLUMNS);
+  getOrCreateSheet_(LIBRARY_SHEET_NAME, LIBRARY_COLUMNS);
 }

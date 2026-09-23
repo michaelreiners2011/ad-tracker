@@ -1,10 +1,34 @@
+import json
 import secrets
 import threading
 import time
+import urllib.error
+import urllib.request
 
 from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
+
+# Same URL as the SHEETS_WEBHOOK_URL constant in templates/index.html — keep both in sync if
+# the Apps Script deployment ever changes. Duplicated (rather than read from the client) so a
+# request here can't be pointed at an arbitrary URL by anything the client sends.
+SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpfXOs0gc9f2TGnLyFk0R02Lsa_bred18-3AtaX9-bQGtjZPawnvM_Nf52v6KbPX1b-Q/exec"
+
+
+@app.route("/api/library")
+def get_library():
+    """Proxies the Apps Script webhook's read-only library lookup. A direct browser fetch to
+    script.google.com is blocked by CORS (the /exec endpoint sends no Access-Control-Allow-
+    Origin header) — this server-to-server request isn't subject to that, since CORS is a
+    browser-enforced rule, not a server one."""
+    try:
+        with urllib.request.urlopen(f"{SHEETS_WEBHOOK_URL}?action=library", timeout=8) as resp:
+            body = resp.read()
+        json.loads(body)  # validate before forwarding — a malformed/HTML error page shouldn't pass as JSON
+        return app.response_class(body, mimetype="application/json")
+    except Exception:
+        return jsonify(local=[], promo=[], schedule=[]), 200
+
 
 # ═══════════════════════════════════════════════════════════════════════════
 #  MULTI-PRODUCER LIVE SYNC (in-memory only — no database)
