@@ -1111,6 +1111,22 @@ function savePreferencesFromModal() {
   savePrefs();
   closeModal('modal-preferences');
   applyPreferenceDefaultsToSetupForm();
+  applyLayoutModeLive();
+}
+
+// Re-applies the layout preference to an already-running tracker screen immediately, instead
+// of waiting for the next Start/Join/Recover. Purely a display toggle — doesn't touch
+// state.todayEvents/timers/sync/autosave at all, so there's nothing here that can corrupt
+// broadcast data; a no-op if no broadcast is currently active.
+function applyLayoutModeLive() {
+  const layout = document.getElementById('tracker-layout');
+  if (!layout || layout.classList.contains('hidden')) return;
+  layout.classList.toggle('layout-tabs', prefs.layoutMode === 'tabs');
+  // Switching into Tabs needs exactly one panel marked .active; if one's already set from a
+  // previous stint in Tabs mode this broadcast, leave it as-is rather than jumping back to Cloud.
+  if (prefs.layoutMode === 'tabs' && !document.querySelector('.tab-panel.active')) {
+    switchTab('tracker');
+  }
 }
 
 // Pre-fills the setup screen's Vertical/Goal fields from saved preferences. Safe to call any
