@@ -1,4 +1,5 @@
 import json
+import os
 import secrets
 import threading
 import time
@@ -9,10 +10,14 @@ from flask import Flask, jsonify, render_template, request
 
 app = Flask(__name__)
 
-# Same URL as the SHEETS_WEBHOOK_URL constant in templates/index.html — keep both in sync if
-# the Apps Script deployment ever changes. Duplicated (rather than read from the client) so a
+# The live Google Sheet's Apps Script deployment. Passed to templates/index.html at render time
+# (so the page and the /api/library proxy always agree) and never read from the client, so a
 # request here can't be pointed at an arbitrary URL by anything the client sends.
-SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpfXOs0gc9f2TGnLyFk0R02Lsa_bred18-3AtaX9-bQGtjZPawnvM_Nf52v6KbPX1b-Q/exec"
+PRODUCTION_SHEETS_WEBHOOK_URL = "https://script.google.com/macros/s/AKfycbwpfXOs0gc9f2TGnLyFk0R02Lsa_bred18-3AtaX9-bQGtjZPawnvM_Nf52v6KbPX1b-Q/exec"
+# A Render service can point at a different Sheet (e.g. the testing service → the test copy) by
+# setting the SHEETS_WEBHOOK_URL environment variable. The live service doesn't set it.
+SHEETS_WEBHOOK_URL = os.environ.get("SHEETS_WEBHOOK_URL", "").strip() or PRODUCTION_SHEETS_WEBHOOK_URL
+IS_TEST_SHEET = SHEETS_WEBHOOK_URL != PRODUCTION_SHEETS_WEBHOOK_URL
 
 
 @app.route("/api/library")
@@ -98,7 +103,7 @@ def _public_event(e):
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", sheets_webhook_url=SHEETS_WEBHOOK_URL, is_test_sheet=IS_TEST_SHEET)
 
 
 @app.route("/api/sessions", methods=["POST"])
