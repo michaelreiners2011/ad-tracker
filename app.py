@@ -158,6 +158,7 @@ def poll_session(code):
             stopped=session["stopped"],
             stopKind=session["stopKind"],
             libraries=session["libraries"],
+            startTimeMs=session["config"].get("startTimeMs"),
             isHeartbeatOwner=session["heartbeatOwner"] == client_id,
         )
 
@@ -234,6 +235,24 @@ def set_library(code):
             return jsonify(error="not found"), 404
         _touch_locked(session, client_id)
         session["libraries"][lib_type] = data.get("items") or []
+        return jsonify(ok=True)
+
+
+@app.route("/api/sessions/<code>/start-time", methods=["POST"])
+def set_start_time(code):
+    """A producer corrected the broadcast start time mid-show; the other picks it up on poll."""
+    data = request.get_json(force=True, silent=True) or {}
+    client_id = data.get("clientId")
+    start_ms = data.get("startTimeMs")
+    if not isinstance(start_ms, (int, float)):
+        return jsonify(error="startTimeMs required"), 400
+    with _sessions_lock:
+        session = _sessions.get(code.upper())
+        if not session:
+            return jsonify(error="not found"), 404
+        _touch_locked(session, client_id)
+        session["config"]["startTimeMs"] = start_ms
+        session["config"]["startDisplayMs"] = data.get("startDisplayMs") or start_ms
         return jsonify(ok=True)
 
 
